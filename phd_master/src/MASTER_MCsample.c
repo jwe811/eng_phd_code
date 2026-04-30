@@ -335,13 +335,18 @@ void generate_evectors() {
 	
 	// VERIFICATION: Check against archival file if it exists
 	char r_filename[100];
-	sprintf(r_filename, "data/R_Evector_TS_L%dM%d.txt", L, M);
+	if (ham_check) {
+		sprintf(r_filename, "data/R_EvectorHam_TS_L%dM%d.txt", L, M);
+	} else {
+		sprintf(r_filename, "data/R_Evector_TS_L%dM%d.txt", L, M);
+	}
+
 	FILE *r_fp = fopen(r_filename, "r");
 	if (r_fp != NULL) {
 		printf("Verifying calculated eigenvectors against archival data in %s...\n", r_filename);
 		double max_diff = 0.0;
 		int diff_count = 0;
-		for (int i = 1; i <= max_tspans; i++) {
+		for (int i = 1; i <= (int)num_tspans; i++) {
 			double file_val;
 			if (fscanf(r_fp, "%lf", &file_val) == 1) {
 				double diff = fabs(R_Evector_solve[0][i] - file_val);
@@ -352,7 +357,7 @@ void generate_evectors() {
 		printf("Verification complete. Max difference: %e, Significant differences (>1e-9): %d\n", max_diff, diff_count);
 		fclose(r_fp);
 	} else {
-		printf("No archival file found for verification. Proceeding with calculated values.\n");
+		printf("No archival file found for verification (%s). Proceeding with calculated values.\n", r_filename);
 	}
 }
 
@@ -362,37 +367,72 @@ void set_system_params() {
     vL = L + 1;
     if (M == 0) CS_mode = 1;
     
-    if (M == 1 && L == 1) {
-        max_sections = 8;
-        max_tspans = 48;
-        dom_evalue = 7.0;
-    } else if (M == 1 && L == 2) {
-        max_sections = 73;
-        max_tspans = 1829;
-        dom_evalue = 34.360180657516501;
-    } else if (M == 1 && L == 3) {
-        max_sections = 742;
-        max_tspans = 70306;
-        dom_evalue = 165.169003076277392;
-    } else if (M == 1 && L == 4) {
-        max_sections = 9309;
-        max_tspans = 3165653;
-        dom_evalue = 770.927136914359608;
-    } else if (M == 1 && L == 5) {
-        max_sections = 138038;
-        max_tspans = 165637127;
-        dom_evalue = 3562.911364811740896;
-    } else if (M == 2 && L == 2) {
-        max_sections = 2619;
-        max_tspans = 513585;
-        dom_evalue = 416.870158713340345;
-    } else if (M == 2 && L == 3) {
-        max_sections = 138322;
-        max_tspans = 201423784;
-        dom_evalue = 4945.864451078689854;
+    if (ham_check) {
+        if (M == 1 && L == 1) {
+            max_sections = 8;
+            max_tspans = 22;
+            dom_evalue = 3.732050810014727;
+        } else if (M == 1 && L == 2) {
+            max_sections = 73;
+            max_tspans = 649;
+            dom_evalue = 14.076438172824952;
+        } else if (M == 1 && L == 3) {
+            max_sections = 742;
+            max_tspans = 19554;
+            dom_evalue = 49.643407510907970;
+        } else if (M == 1 && L == 4) {
+            max_sections = 9309;
+            max_tspans = 728925;
+            dom_evalue = 172.714480164060546;
+        } else if (M == 1 && L == 5) {
+            max_sections = 138038;
+            max_tspans = 32294131;
+            dom_evalue = 596.477267188525502;
+        } else if (M == 2 && L == 2) {
+            max_sections = 2619;
+            max_tspans = 184574;
+            dom_evalue = 104.488979151088131;
+        } else if (M == 2 && L == 3) {
+            max_sections = 138322;
+            max_tspans = 39671908;
+            dom_evalue = 880.559222610926781;
+        } else {
+            fprintf(stderr, "Unsupported Hamiltonian L and M values (%d, %d).\n", L, M);
+            exit(1);
+        }
     } else {
-        fprintf(stderr, "Unsupported L and M values (%d, %d). Please update set_system_params().\n", L, M);
-        exit(1);
+        if (M == 1 && L == 1) {
+            max_sections = 8;
+            max_tspans = 48;
+            dom_evalue = 7.0;
+        } else if (M == 1 && L == 2) {
+            max_sections = 73;
+            max_tspans = 1829;
+            dom_evalue = 34.360180657516501;
+        } else if (M == 1 && L == 3) {
+            max_sections = 742;
+            max_tspans = 70306;
+            dom_evalue = 165.169003076277392;
+        } else if (M == 1 && L == 4) {
+            max_sections = 9309;
+            max_tspans = 3165653;
+            dom_evalue = 770.927136914359608;
+        } else if (M == 1 && L == 5) {
+            max_sections = 138038;
+            max_tspans = 165637127;
+            dom_evalue = 3562.911364811740896;
+        } else if (M == 2 && L == 2) {
+            max_sections = 2619;
+            max_tspans = 513585;
+            dom_evalue = 416.870158713340345;
+        } else if (M == 2 && L == 3) {
+            max_sections = 138322;
+            max_tspans = 201423784;
+            dom_evalue = 4945.864451078689854;
+        } else {
+            fprintf(stderr, "Unsupported Standard L and M values (%d, %d).\n", L, M);
+            exit(1);
+        }
     }
     vec_length = max_sections + 1;
 }
@@ -477,6 +517,8 @@ void allocate_globals() {
     built_walks_end = allocate_2d_int(vM * vL / 2 + 1, 3);
     built_walks_direcs = allocate_2d_int(vM * vL / 2 + 1, vM * vL * (totalspan + 1) + 1);
 }
+
+void check_reachability(void);
 
 /******************* end of functions used in this program *****************/
 /***************************************************************************/
@@ -708,6 +750,10 @@ int main(int argc, char *argv[]) {
 	printf("Number of duplicate 2-spans generated that were not recorded=%lu\n", dupcounter);
     printf("Dominant Eigenvalue: %.15f\n", dom_evalue);
 
+	if (ham_check) {
+		check_reachability();
+	}
+
 
 /*
 	int k,l;
@@ -734,9 +780,10 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-	printf("\nNOW SAMPLING: %d samples from L=%d, M=%d, span=%d\n", samplesize, L, M, totalspan);
+	printf("\nNOW SAMPLING: %d samples from L=%d, M=%d, span=%d%s\n", samplesize, L, M, totalspan, (ham_check ? " (Hamiltonian)" : ""));
 
-	sprintf(filename, "%s/MCpolysL%dM%dspan%drun%dnum%lu.txt", output_dir, L, M, totalspan, runnum, filenum);
+	const char *file_prefix = (ham_check) ? "MCpolysHam" : "MCpolys";
+	sprintf(filename, "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
 	fp = fopen(filename, "w");	//create or overwrite the file "filename"
 
 	if(fp != NULL){
@@ -1469,16 +1516,21 @@ leavehinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 	 	/* if the leaving edge is on the left and there is at least one edge on the right section */
 		/* this may be a valid two span */
 			if (LFlag(pointordNum) /*&& RFlag(pointordNum)*/){
-			/* if the two span connects to phi on the left and on the right then do the following*/
+				int isHam = 1;
+				if (ham_check) {
+					for (int ii = 0; ii <= M; ii++) {
+						for (int jj = 0; jj <= L; jj++) {
+							if (hingestatus[ii][jj] == 0) { isHam = 0; break; }
+						}
+						if (!isHam) break;
+					}
+				}
 
-	//			printordtemp();
-				fillreordertemplate((*pointordNum)[0]-1, (*pointordNum)[1]-1);
-	//			printreordtemp();
-	//			printf("\n");
-
-				valid_2_spans++; /*This is a valid 2 span so it is counted. Includes duplicates. */
-				recordtemplate(pointordNum); /*the information contained in ordertemplate is recorded*/
-				//duplicate check is performed in recordtemplate.
+				if (isHam) {
+					fillreordertemplate((*pointordNum)[0]-1, (*pointordNum)[1]-1);
+					valid_2_spans++; /*This is a valid 2 span so it is counted. Includes duplicates. */
+					recordtemplate(pointordNum); /*the information contained in ordertemplate is recorded*/
+				}
 			}
 			num_2_spans++; /*Keep track of all 2 spans, valid and non-valid, just for interest sake*/
 		}
@@ -1877,11 +1929,20 @@ leaveendhinge(int i, int j, int curlength)
 		EndOrdNum[0]++;
 
 		if (LFlag_endhinge(&EndOrdNum)){
-			fillrendtemplate();
-			recordendtemplate(); /*the information contained in endtemplate is recorded*/
-			//duplicate check is performed in recordtemplate.
+			int isHam = 1;
+			if (ham_check) {
+				for (int ii = 0; ii <= M; ii++) {
+					for (int jj = 0; jj <= L; jj++) {
+						if (hingestatus[ii][jj] == 0) { isHam = 0; break; }
+					}
+					if (!isHam) break;
+				}
+			}
 
-
+			if (isHam) {
+				fillrendtemplate();
+				recordendtemplate(); /*the information contained in endtemplate is recorded*/
+			}
 		}
 
 
@@ -3282,6 +3343,103 @@ int reverse_direc(int direc){
 	}
 }
 
+void check_reachability() {
+    if (!ham_check) return;
+    
+    printf("\n--- HAMILTONIAN REACHABILITY CHECK ---\n");
+    unsigned long int testsection = 1; 
+    unsigned char *testvector = (unsigned char*)calloc(max_sections + 1, sizeof(unsigned char));
+    unsigned char *temptestvector = (unsigned char*)calloc(max_sections + 1, sizeof(unsigned char));
+    unsigned char *testvector2 = NULL;
+    unsigned char *temptestvector2 = NULL;
+    
+    if (M == 2 && L == 2) {
+        testvector2 = (unsigned char*)calloc(max_sections + 1, sizeof(unsigned char));
+        temptestvector2 = (unsigned char*)calloc(max_sections + 1, sizeof(unsigned char));
+    }
+
+    testvector[testsection] = 1;
+    unsigned long int testpower = 200; // Sufficient for most reachable spaces
+    
+    printf("Performing reachability analysis (power=%lu)...\n", testpower);
+    for (unsigned long int k = 1; k <= testpower; k++) {
+        for (int i = 1; i <= max_sections; i++) temptestvector[i] = 0;
+        for (int i = 1; i <= max_sections; i++) {
+            if (testvector[i]) {
+                for (int j = 1; j <= num_outsections[i]; j++) {
+                    unsigned long int out = t_outsection[i][j];
+                    if (out > 0) temptestvector[out] = 1;
+                }
+            }
+        }
+        int changed = 0;
+        for (int i = 1; i <= max_sections; i++) {
+            if (testvector[i] != temptestvector[i]) changed = 1;
+            testvector[i] = temptestvector[i];
+        }
+        if (!changed && k > 10) break; // Converged
+    }
+    
+    if (M == 2 && L == 2) {
+        testvector2[testsection] = 1;
+        for (unsigned long int k = 1; k <= testpower + 1; k++) {
+            for (int i = 1; i <= max_sections; i++) temptestvector2[i] = 0;
+            for (int i = 1; i <= max_sections; i++) {
+                if (testvector2[i]) {
+                    for (int j = 1; j <= num_outsections[i]; j++) {
+                        unsigned long int out = t_outsection[i][j];
+                        if (out > 0) temptestvector2[out] = 1;
+                    }
+                }
+            }
+            int changed = 0;
+            for (int i = 1; i <= max_sections; i++) {
+                if (testvector2[i] != temptestvector2[i]) changed = 1;
+                testvector2[i] = temptestvector2[i];
+            }
+            if (!changed && k > 10) break;
+        }
+    }
+
+    unsigned long int numconnect = 0;
+    unsigned long int numnoconnect = 0;
+    for (int i = 1; i <= max_sections; i++) {
+        if (num_outsections[i] > 0) {
+            int reachable = 0;
+            if (M == 2 && L == 2) reachable = (testvector[i] || testvector2[i]);
+            else reachable = testvector[i];
+            
+            if (!reachable) {
+                numnoconnect++;
+                // Invalidate transitions
+                for (int j = 1; j <= num_outsections[i]; j++) {
+                    t_outsection[i][j] = 0;
+                    t_num_walks[i][j] = 0;
+                }
+                num_outsections[i] = 0;
+                num_left_endhinges[i] = 0;
+                num_right_endhinges[i] = 0;
+            } else {
+                numconnect++;
+            }
+        }
+    }
+    
+    // Re-index transitions (t_nrr)
+    unsigned long int new_tspan_num = 0;
+    for (int i = 1; i <= max_sections; i++) {
+        for (int j = 1; j <= num_outsections[i]; j++) {
+            t_nrr[i][j] = ++new_tspan_num;
+        }
+    }
+    
+    printf("Reachable Hamiltonian sections: %lu (Removed %lu isolated states)\n", numconnect, numnoconnect);
+    printf("Total valid Hamiltonian 2-spans: %lu\n", new_tspan_num);
+    num_tspans = new_tspan_num;
+
+    free(testvector); free(temptestvector);
+    if (testvector2) { free(testvector2); free(temptestvector2); }
+}
 
 void printtofile(){
 	if(filetotal>=maxpolys){
@@ -3290,8 +3448,9 @@ void printtofile(){
 		fprintf(fp, "-999\n");
 		fclose(fp);
 		filenum++;
-		sprintf(filename, "%s/MCpolysL%dM%dspan%drun%dnum%lu.txt", output_dir, L, M, totalspan, runnum, filenum);
-		fp = fopen(filename, "w");	//create or overwrite the file "filename
+		const char *file_prefix = (ham_check) ? "MCpolysHam" : "MCpolys";
+		sprintf(filename, "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
+		fp = fopen(filename, "w");	//create or overwrite the file "filename"
 
 		if(fp != NULL){
 			fprintf(fp, "UofS\n");	//first line in file is always "UofS"
