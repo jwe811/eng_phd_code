@@ -41,6 +41,9 @@ int vec_length;
 int vM;
 int vL;
 int CS_mode = 0; // Replacement for CS macro
+int mode = 0;    // 0: SAP, 1: HamSAP, 2: 2SAP, 3: Ham2SAP
+int ham_check = 0; // 1 if Hamiltonian mode is active
+char* output_dir = "data/SAPs";
 double fval = 0.0; // Force value for spectral solver
 
 #define	vec_ent	double		/*vector entries will be of type defined here*/
@@ -482,7 +485,7 @@ void allocate_globals() {
 int main(int argc, char *argv[]) {
 
 	int opt;
-	while ((opt = getopt(argc, argv, "L:M:s:n:r:S:")) != -1) {
+	while ((opt = getopt(argc, argv, "L:M:s:n:r:S:m:")) != -1) {
 		switch (opt) {
 			case 'L': L = atoi(optarg); break;
 			case 'M': M = atoi(optarg); break;
@@ -490,14 +493,23 @@ int main(int argc, char *argv[]) {
 			case 'n': samplesize = atoi(optarg); break;
 			case 'r': runnum = atoi(optarg); break;
 			case 'S': seednum = (unsigned int)atoi(optarg); break;
+			case 'm': 
+				mode = atoi(optarg);
+				if (mode == 1 || mode == 3) ham_check = 1;
+				break;
 			default:
-				fprintf(stderr, "Usage: %s [-L L] [-M M] [-s totalspan] [-n samplesize] [-r runnum] [-S seednum]\n", argv[0]);
+				fprintf(stderr, "Usage: %s [-L L] [-M M] [-s totalspan] [-n samplesize] [-r runnum] [-S seednum] [-m mode]\n", argv[0]);
 				exit(EXIT_FAILURE);
 		}
 	}
 
 	set_system_params();
 	allocate_globals();
+
+	if (mode == 1) output_dir = "data/HamSAPs";
+	else if (mode == 2) output_dir = "data/2SAPs";
+	else if (mode == 3) output_dir = "data/Ham2SAPs";
+	else output_dir = "data/SAPs";
 
 	unsigned int seed=seednum;
 	initran_(&seed);
@@ -724,7 +736,7 @@ int main(int argc, char *argv[]) {
 
 	printf("\nNOW SAMPLING: %d samples from L=%d, M=%d, span=%d\n", samplesize, L, M, totalspan);
 
-	sprintf(filename, "MCpolysL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, filenum);
+	sprintf(filename, "%s/MCpolysL%dM%dspan%drun%dnum%lu.txt", output_dir, L, M, totalspan, runnum, filenum);
 	fp = fopen(filename, "w");	//create or overwrite the file "filename"
 
 	if(fp != NULL){
@@ -3278,7 +3290,7 @@ void printtofile(){
 		fprintf(fp, "-999\n");
 		fclose(fp);
 		filenum++;
-		sprintf(filename, "MCpolysL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, filenum);
+		sprintf(filename, "%s/MCpolysL%dM%dspan%drun%dnum%lu.txt", output_dir, L, M, totalspan, runnum, filenum);
 		fp = fopen(filename, "w");	//create or overwrite the file "filename
 
 		if(fp != NULL){

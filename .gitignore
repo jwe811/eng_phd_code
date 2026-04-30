@@ -6,6 +6,10 @@
 # Simulation outputs
 MCpolys*.txt
 UofS*.txt
+**/data/SAPs/*.txt
+**/data/HamSAPs/*.txt
+**/data/2SAPs/*.txt
+**/data/Ham2SAPs/*.txt
 
 # Binaries and Object files
 *.o
