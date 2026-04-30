@@ -11,9 +11,11 @@
 
 #include <stdio.h>		/* Standard input/output		*/
 #include <stdlib.h>		/* Need Ascii to integer function	*/
+#include <string.h>
 #include <time.h>		/* Used to time the program		*/
 #include <math.h>		/* Standard math functions (i.e. pow)	*/
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <getopt.h>
 #include "../include/marsaglia.h"
@@ -323,6 +325,291 @@ int reverse_direc(int direc);
 
 void printtofile();
 
+static void rewrite_legacy_include(FILE *out, char *line)
+{
+	char *p = line;
+	while (*p == ' ' || *p == '\t') p++;
+	if (strncmp(p, "#include", 8) != 0) {
+		fputs(line, out);
+		return;
+	}
+	const char *roots[] = {
+		"../topology/",
+		"../sections/",
+		"../utils/",
+		"../analysis/statistics/"
+	};
+	const char *targets[] = {
+		"../../../phd_archive/src/topology/",
+		"../../../phd_archive/src/sections/",
+		"../../../phd_archive/src/utils/",
+		"../../../phd_archive/src/analysis/statistics/"
+	};
+	for (int i = 0; i < 4; i++) {
+		char *root = strstr(line, roots[i]);
+		if (root != NULL) {
+			char *name = root + strlen(roots[i]);
+			char *end = strchr(name, '"');
+			if (end != NULL) *end = '\0';
+			fprintf(out, "#include \"%s%s\"\n", targets[i], name);
+			return;
+		}
+	}
+	if (strstr(line, "#include \"pw_meth_") != NULL) {
+		char *name = strchr(line, '"') + 1;
+		char *end = strchr(name, '"');
+		if (end != NULL) *end = '\0';
+		fprintf(out, "#include \"../../../phd_archive/src/transfer_matrix/%s\"\n", name);
+		return;
+	}
+	fputs(line, out);
+}
+
+static int write_legacy_2sap_source(const char *src_path, const char *dst_path, const char *data_prefix)
+{
+	FILE *in = fopen(src_path, "r");
+	if (in == NULL) {
+		fprintf(stderr, "Could not open legacy 2SAP sampler source at %s\n", src_path);
+		return 0;
+	}
+	FILE *out = fopen(dst_path, "w");
+	if (out == NULL) {
+		fprintf(stderr, "Could not write generated 2SAP sampler source at %s\n", dst_path);
+		fclose(in);
+		return 0;
+	}
+
+	char line[4096];
+	while (fgets(line, sizeof(line), in) != NULL) {
+		char define_name[128];
+		if (sscanf(line, " # define %127s", define_name) == 1 || sscanf(line, "#define %127s", define_name) == 1) {
+			if (strcmp(define_name, "L") == 0) {
+				fprintf(out, "#define\tL %d\n", L);
+				continue;
+			}
+			if (strcmp(define_name, "M") == 0) {
+				fprintf(out, "#define\tM %d\n", M);
+				continue;
+			}
+			if (strcmp(define_name, "totalspan") == 0) {
+				fprintf(out, "#define\ttotalspan %d\n", totalspan);
+				continue;
+			}
+			if (strcmp(define_name, "samplesize") == 0) {
+				fprintf(out, "#define\tsamplesize %d\n", samplesize);
+				continue;
+			}
+			if (strcmp(define_name, "runnum") == 0) {
+				fprintf(out, "#define\trunnum %d\n", runnum);
+				continue;
+			}
+			if (strcmp(define_name, "seednum") == 0) {
+				fprintf(out, "#define\tseednum %u\n", seednum);
+				continue;
+			}
+			if (strcmp(define_name, "maxpolys") == 0) {
+				fprintf(out, "#define\tmaxpolys %d\n", maxpolys);
+				continue;
+			}
+		}
+
+		if (strstr(line, "sprintf(filename2, \"2SAP_R_Evector_TS_L%dM%d.txt\"") != NULL) {
+			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+		if (strstr(line, "sprintf(filename2, \"2SAP_R_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
+			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+		if (strstr(line, "sprintf(filename, \"MC2SAPsL%dM%dspan%drun%dnum%lu.txt\"") != NULL) {
+			fprintf(out, "\t\tsprintf(filename, \"%sdata/2SAPs/MC2SAPsL%%dM%%dspan%%drun%%dnum%%lu.txt\", L, M, totalspan, runnum, filenum);\n", data_prefix);
+			continue;
+		}
+		if (strstr(line, "sprintf(filename, \"MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt\"") != NULL) {
+			fprintf(out, "\t\tsprintf(filename, \"%sdata/Ham2SAPs/MC2SAPsHamL%%dM%%dspan%%drun%%dnum%%lu.txt\", L, M, totalspan, runnum, filenum);\n", data_prefix);
+			continue;
+		}
+		char *include_line = line;
+		while (*include_line == ' ' || *include_line == '\t') include_line++;
+		if (strncmp(include_line, "#include", 8) == 0 &&
+			(strstr(line, "\"../") != NULL || strstr(line, "\"pw_meth_") != NULL)) {
+			rewrite_legacy_include(out, line);
+			continue;
+		}
+		if (strstr(line, "#include \"Num_section_12V_endhinge_nonordered2.c\"") != NULL) {
+			fprintf(out, "#include \"../../../phd_archive/src/sections/Num_section_12V_endhinge_nonordered2.c\"\n");
+			continue;
+		}
+
+		fputs(line, out);
+	}
+
+	fclose(out);
+	fclose(in);
+	return 1;
+}
+
+static int write_legacy_2sap_tmcalc_source(const char *src_path, const char *dst_path, const char *data_prefix)
+{
+	FILE *in = fopen(src_path, "r");
+	if (in == NULL) {
+		fprintf(stderr, "Could not open legacy 2SAP TM source at %s\n", src_path);
+		return 0;
+	}
+	FILE *out = fopen(dst_path, "w");
+	if (out == NULL) {
+		fprintf(stderr, "Could not write generated 2SAP TM source at %s\n", dst_path);
+		fclose(in);
+		return 0;
+	}
+
+	char line[4096];
+	while (fgets(line, sizeof(line), in) != NULL) {
+		char define_name[128];
+		if (sscanf(line, " # define %127s", define_name) == 1 || sscanf(line, "#define %127s", define_name) == 1) {
+			if (strcmp(define_name, "L") == 0) {
+				fprintf(out, "#define\tL %d\n", L);
+				continue;
+			}
+			if (strcmp(define_name, "M") == 0) {
+				fprintf(out, "#define\tM %d\n", M);
+				continue;
+			}
+		}
+
+		if (strstr(line, "sprintf(filename, \"2SAP_L_Evector_TS_L%dM%d.txt\"") != NULL) {
+			fprintf(out, "\tsprintf(filename, \"%sdata/2SAP_L_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+		if (strstr(line, "sprintf(filename2, \"2SAP_R_Evector_TS_L%dM%d.txt\"") != NULL) {
+			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+		if (strstr(line, "sprintf(filename, \"2SAP_L_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
+			fprintf(out, "\tsprintf(filename, \"%sdata/2SAP_L_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+		if (strstr(line, "sprintf(filename2, \"2SAP_R_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
+			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+		char *include_line = line;
+		while (*include_line == ' ' || *include_line == '\t') include_line++;
+		if (strncmp(include_line, "#include", 8) == 0 &&
+			(strstr(line, "\"../") != NULL || strstr(line, "\"pw_meth_") != NULL)) {
+			rewrite_legacy_include(out, line);
+			continue;
+		}
+
+		fputs(line, out);
+	}
+
+	fclose(out);
+	fclose(in);
+	return 1;
+}
+
+static int run_legacy_2sap_sampler(void)
+{
+	int ham_mode = (mode == 3);
+	const char *prefix = "";
+	const char *legacy_src = ham_mode ? "../phd_archive/src/monte_carlo/2SAP_MCsample_Ham.c" : "../phd_archive/src/monte_carlo/2SAP_MCsample.c";
+	const char *legacy_tm_src = ham_mode ? "../phd_archive/src/transfer_matrix/2SAP_TMcalcHam_PrintEvectors.c" : "../phd_archive/src/transfer_matrix/2SAP_TMcalc_PrintEvectors.c";
+	if (access(legacy_src, R_OK) != 0) {
+		prefix = "phd_master/";
+		legacy_src = ham_mode ? "phd_archive/src/monte_carlo/2SAP_MCsample_Ham.c" : "phd_archive/src/monte_carlo/2SAP_MCsample.c";
+		legacy_tm_src = ham_mode ? "phd_archive/src/transfer_matrix/2SAP_TMcalcHam_PrintEvectors.c" : "phd_archive/src/transfer_matrix/2SAP_TMcalc_PrintEvectors.c";
+	}
+	if (access(legacy_src, R_OK) != 0) {
+		fprintf(stderr, "Could not locate legacy 2SAP sampler source: %s\n", legacy_src);
+		return 1;
+	}
+	if (access(legacy_tm_src, R_OK) != 0) {
+		fprintf(stderr, "Could not locate legacy 2SAP TS eigenvector source: %s\n", legacy_tm_src);
+		return 1;
+	}
+
+	char data_dir[1024];
+	char mc_dir[1024];
+	char vector_file[1024];
+	char generated_tm_src[1024];
+	char generated_src[1024];
+	char tm_exe_path[1024];
+	char exe_path[1024];
+	char compile_cmd[4096];
+	char run_cmd[1024];
+
+	snprintf(data_dir, sizeof(data_dir), "%sdata", prefix);
+	snprintf(mc_dir, sizeof(mc_dir), "%ssrc/mc_output", prefix);
+	mkdir(data_dir, 0775);
+	snprintf(data_dir, sizeof(data_dir), "%sdata/2SAPs", prefix);
+	mkdir(data_dir, 0775);
+	snprintf(data_dir, sizeof(data_dir), "%sdata/Ham2SAPs", prefix);
+	mkdir(data_dir, 0775);
+	mkdir(mc_dir, 0775);
+	if (strlen(mc_dir) + 64 >= sizeof(generated_src)) {
+		fprintf(stderr, "Generated source path is too long.\n");
+		return 1;
+	}
+	sprintf(generated_tm_src, "%s/%s.generated.c", mc_dir, ham_mode ? "2SAP_TMcalcHam_PrintEvectors" : "2SAP_TMcalc_PrintEvectors");
+	sprintf(generated_src, "%s/%s.generated.c", mc_dir, ham_mode ? "2SAP_MCsample_Ham" : "2SAP_MCsample");
+
+	snprintf(vector_file, sizeof(vector_file), "%sdata/2SAP_R_Evector%s_TS_L%dM%d.txt", prefix, ham_mode ? "Ham" : "", L, M);
+	if (!write_legacy_2sap_tmcalc_source(legacy_tm_src, generated_tm_src, prefix)) {
+		return 1;
+	}
+	if (strlen(mc_dir) + 64 >= sizeof(tm_exe_path)) {
+		fprintf(stderr, "Generated TM path is too long.\n");
+		return 1;
+	}
+	sprintf(tm_exe_path, "%s/%s_L%dM%d", mc_dir, ham_mode ? "2sap_tmcalc_ham" : "2sap_tmcalc", L, M);
+	if (strlen(tm_exe_path) + strlen(generated_tm_src) + 64 >= sizeof(compile_cmd)) {
+		fprintf(stderr, "Generated TM compile command is too long.\n");
+		return 1;
+	}
+	sprintf(compile_cmd, "gcc -O3 -Wno-unused-result -o %s %s -lm", tm_exe_path, generated_tm_src);
+	printf("Compiling legacy %s2SAP TS eigenvector generator: %s\n", ham_mode ? "Hamiltonian " : "", compile_cmd);
+	if (system(compile_cmd) != 0) {
+		fprintf(stderr, "Failed to compile generated 2SAP TS eigenvector generator.\n");
+		return 1;
+	}
+	snprintf(run_cmd, sizeof(run_cmd), "%s", tm_exe_path);
+	printf("Generating legacy %s2SAP TS eigenvector for L=%d M=%d\n", ham_mode ? "Hamiltonian " : "", L, M);
+	if (system(run_cmd) != 0) {
+		fprintf(stderr, "Failed to generate legacy 2SAP TS eigenvector.\n");
+		return 1;
+	}
+	if (access(vector_file, R_OK) != 0) {
+		fprintf(stderr, "Expected 2SAP TS eigenvector was not created: %s\n", vector_file);
+		return 1;
+	}
+
+	if (!write_legacy_2sap_source(legacy_src, generated_src, prefix)) {
+		return 1;
+	}
+
+	if (strlen(mc_dir) + 64 >= sizeof(exe_path)) {
+		fprintf(stderr, "Generated sampler path is too long.\n");
+		return 1;
+	}
+	sprintf(exe_path, "%s/%s_L%dM%d", mc_dir, ham_mode ? "2sap_sampler_ham" : "2sap_sampler", L, M);
+	if (strlen(exe_path) + strlen(generated_src) + 32 >= sizeof(compile_cmd)) {
+		fprintf(stderr, "Generated compile command is too long.\n");
+		return 1;
+	}
+	sprintf(compile_cmd, "gcc -O3 -Wno-unused-result -o %s %s -lm", exe_path, generated_src);
+	printf("Compiling legacy %s2SAP sampler: %s\n", ham_mode ? "Hamiltonian " : "", compile_cmd);
+	if (system(compile_cmd) != 0) {
+		fprintf(stderr, "Failed to compile generated 2SAP sampler.\n");
+		return 1;
+	}
+
+	snprintf(run_cmd, sizeof(run_cmd), "%s", exe_path);
+	printf("Running legacy %s2SAP sampler with L=%d M=%d span=%d samples=%d run=%d seed=%u\n",
+		ham_mode ? "Hamiltonian " : "", L, M, totalspan, samplesize, runnum, seednum);
+	return system(run_cmd) == 0 ? 0 : 1;
+}
+
 void generate_evectors() {
 	printf("Starting integrated spectral solver...\n");
 	double fugacity = 1.0; // Uniform sampling uses eigenvectors at z=1.0
@@ -543,6 +830,10 @@ int main(int argc, char *argv[]) {
 				fprintf(stderr, "Usage: %s [-L L] [-M M] [-s totalspan] [-n samplesize] [-r runnum] [-S seednum] [-m mode]\n", argv[0]);
 				exit(EXIT_FAILURE);
 		}
+	}
+
+	if (mode == 2 || mode == 3) {
+		return run_legacy_2sap_sampler();
 	}
 
 	set_system_params();
@@ -3555,12 +3846,3 @@ void printtofile(){
 
 
 	
-
-
-
-
-
-
-
-
-
