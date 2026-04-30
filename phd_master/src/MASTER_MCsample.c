@@ -4,7 +4,7 @@
 //R_Evector_TS_L%dM%d.txt
 //These files must be in same folder.
 
-//compliled with: gcc -lm -Wall -O3 -o MCsample.o MCsample.c
+//compiled with: gcc -lm -Wall -O3 -o mc_master MASTER_MCsample.c
 //ran using ./MCsample.o
 
 //sample SAPs will go to files: MCpolysL%dM%dspan%dnum%d.txt
