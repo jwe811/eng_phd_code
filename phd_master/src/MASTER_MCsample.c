@@ -380,7 +380,16 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 	}
 
 	char line[4096];
+	int skip_evector_file_read = 0;
 	while (fgets(line, sizeof(line), in) != NULL) {
+		if (skip_evector_file_read) {
+			if (strncmp(line, "/*", 2) == 0 || strncmp(line, "\t/*", 3) == 0) {
+				fputs(line, out);
+				skip_evector_file_read = 0;
+			}
+			continue;
+		}
+
 		char define_name[128];
 		if (sscanf(line, " # define %127s", define_name) == 1 || sscanf(line, "#define %127s", define_name) == 1) {
 			if (strcmp(define_name, "L") == 0) {
@@ -413,8 +422,41 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 			}
 		}
 
+		if (strstr(line, "#include \"../../include/marsaglia.h\"") != NULL) {
+			fputs(line, out);
+			fprintf(out, "\n");
+			fprintf(out, "double *MC_L_Evector[2];\n");
+			fprintf(out, "double *MC_R_Evector[2];\n");
+			fprintf(out, "unsigned long int **MC_tspans_edges;\n");
+			fprintf(out, "double fval = 0.0;\n");
+			fprintf(out, "double max_eval_LRvec(double fugacity);\n");
+			continue;
+		}
+
 		if (strstr(line, "sprintf(filename2, \"2SAP_R_Evector_TS_L%dM%d.txt\"") != NULL) {
 			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			continue;
+		}
+
+		if (strstr(line, "double* R_Evector;") != NULL) {
+			fprintf(out, "\tMC_L_Evector[0] = (double*)malloc(sizeof(double)*(max_tspans+1));\n");
+			fprintf(out, "\tMC_L_Evector[1] = (double*)malloc(sizeof(double)*(max_tspans+1));\n");
+			fprintf(out, "\tMC_R_Evector[0] = (double*)malloc(sizeof(double)*(max_tspans+1));\n");
+			fprintf(out, "\tMC_R_Evector[1] = (double*)malloc(sizeof(double)*(max_tspans+1));\n");
+			fprintf(out, "\tif(MC_L_Evector[0]==NULL || MC_L_Evector[1]==NULL || MC_R_Evector[0]==NULL || MC_R_Evector[1]==NULL){\n");
+			fprintf(out, "\t\tfprintf(stderr, \"Out of memory\");\n");
+			fprintf(out, "\t\texit(0);\n");
+			fprintf(out, "\t}\n");
+			fprintf(out, "\tMC_tspans_edges = (unsigned long int**)malloc(sizeof(unsigned long int*)*(max_keynum+1));\n");
+			fprintf(out, "\tif(MC_tspans_edges==NULL){ fprintf(stderr, \"Out of memory\"); exit(0); }\n");
+			fprintf(out, "\tfor(i=1; i<=max_keynum; i++){\n");
+			fprintf(out, "\t\tMC_tspans_edges[i] = unsgnlong_vecalloc(1, num_outsections[i]);\n");
+			fprintf(out, "\t\tfor(j=1; j<=num_outsections[i]; j++) MC_tspans_edges[i][j] = 0;\n");
+			fprintf(out, "\t}\n");
+			fprintf(out, "\tdouble calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;\n");
+			fprintf(out, "\tprintf(\"Calculated in-process TS eigenvalue=%%.15f (Expected: %%.15f)\\n\", calculated_dom_evalue, dom_evalue);\n");
+			fprintf(out, "\tdouble* R_Evector = MC_R_Evector[0];\n");
+			skip_evector_file_read = 1;
 			continue;
 		}
 		if (strstr(line, "sprintf(filename2, \"2SAP_R_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
@@ -444,65 +486,21 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 		fputs(line, out);
 	}
 
-	fclose(out);
-	fclose(in);
-	return 1;
-}
-
-static int write_legacy_2sap_tmcalc_source(const char *src_path, const char *dst_path, const char *data_prefix)
-{
-	FILE *in = fopen(src_path, "r");
-	if (in == NULL) {
-		fprintf(stderr, "Could not open legacy 2SAP TM source at %s\n", src_path);
-		return 0;
+	fprintf(out, "\n#define L_Evector MC_L_Evector\n");
+	fprintf(out, "#define R_Evector MC_R_Evector\n");
+	fprintf(out, "#define tspans_outsection t_outsection\n");
+	fprintf(out, "#define tspans_nrr t_nrr\n");
+	fprintf(out, "#define tspans_edges MC_tspans_edges\n");
+	if (strstr(src_path, "_Ham.c") != NULL) {
+		fprintf(out, "#include \"../../../phd_archive/src/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c\"\n");
+	} else {
+		fprintf(out, "#include \"../../../phd_archive/src/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP.c\"\n");
 	}
-	FILE *out = fopen(dst_path, "w");
-	if (out == NULL) {
-		fprintf(stderr, "Could not write generated 2SAP TM source at %s\n", dst_path);
-		fclose(in);
-		return 0;
-	}
-
-	char line[4096];
-	while (fgets(line, sizeof(line), in) != NULL) {
-		char define_name[128];
-		if (sscanf(line, " # define %127s", define_name) == 1 || sscanf(line, "#define %127s", define_name) == 1) {
-			if (strcmp(define_name, "L") == 0) {
-				fprintf(out, "#define\tL %d\n", L);
-				continue;
-			}
-			if (strcmp(define_name, "M") == 0) {
-				fprintf(out, "#define\tM %d\n", M);
-				continue;
-			}
-		}
-
-		if (strstr(line, "sprintf(filename, \"2SAP_L_Evector_TS_L%dM%d.txt\"") != NULL) {
-			fprintf(out, "\tsprintf(filename, \"%sdata/2SAP_L_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
-			continue;
-		}
-		if (strstr(line, "sprintf(filename2, \"2SAP_R_Evector_TS_L%dM%d.txt\"") != NULL) {
-			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
-			continue;
-		}
-		if (strstr(line, "sprintf(filename, \"2SAP_L_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
-			fprintf(out, "\tsprintf(filename, \"%sdata/2SAP_L_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
-			continue;
-		}
-		if (strstr(line, "sprintf(filename2, \"2SAP_R_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
-			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
-			continue;
-		}
-		char *include_line = line;
-		while (*include_line == ' ' || *include_line == '\t') include_line++;
-		if (strncmp(include_line, "#include", 8) == 0 &&
-			(strstr(line, "\"../") != NULL || strstr(line, "\"pw_meth_") != NULL)) {
-			rewrite_legacy_include(out, line);
-			continue;
-		}
-
-		fputs(line, out);
-	}
+	fprintf(out, "#undef tspans_edges\n");
+	fprintf(out, "#undef tspans_nrr\n");
+	fprintf(out, "#undef tspans_outsection\n");
+	fprintf(out, "#undef L_Evector\n");
+	fprintf(out, "#undef R_Evector\n");
 
 	fclose(out);
 	fclose(in);
@@ -514,27 +512,18 @@ static int run_legacy_2sap_sampler(void)
 	int ham_mode = (mode == 3);
 	const char *prefix = "";
 	const char *legacy_src = ham_mode ? "../phd_archive/src/monte_carlo/2SAP_MCsample_Ham.c" : "../phd_archive/src/monte_carlo/2SAP_MCsample.c";
-	const char *legacy_tm_src = ham_mode ? "../phd_archive/src/transfer_matrix/2SAP_TMcalcHam_PrintEvectors.c" : "../phd_archive/src/transfer_matrix/2SAP_TMcalc_PrintEvectors.c";
 	if (access(legacy_src, R_OK) != 0) {
 		prefix = "phd_master/";
 		legacy_src = ham_mode ? "phd_archive/src/monte_carlo/2SAP_MCsample_Ham.c" : "phd_archive/src/monte_carlo/2SAP_MCsample.c";
-		legacy_tm_src = ham_mode ? "phd_archive/src/transfer_matrix/2SAP_TMcalcHam_PrintEvectors.c" : "phd_archive/src/transfer_matrix/2SAP_TMcalc_PrintEvectors.c";
 	}
 	if (access(legacy_src, R_OK) != 0) {
 		fprintf(stderr, "Could not locate legacy 2SAP sampler source: %s\n", legacy_src);
 		return 1;
 	}
-	if (access(legacy_tm_src, R_OK) != 0) {
-		fprintf(stderr, "Could not locate legacy 2SAP TS eigenvector source: %s\n", legacy_tm_src);
-		return 1;
-	}
 
 	char data_dir[1024];
 	char mc_dir[1024];
-	char vector_file[1024];
-	char generated_tm_src[1024];
 	char generated_src[1024];
-	char tm_exe_path[1024];
 	char exe_path[1024];
 	char compile_cmd[4096];
 	char run_cmd[1024];
@@ -551,38 +540,7 @@ static int run_legacy_2sap_sampler(void)
 		fprintf(stderr, "Generated source path is too long.\n");
 		return 1;
 	}
-	sprintf(generated_tm_src, "%s/%s.generated.c", mc_dir, ham_mode ? "2SAP_TMcalcHam_PrintEvectors" : "2SAP_TMcalc_PrintEvectors");
 	sprintf(generated_src, "%s/%s.generated.c", mc_dir, ham_mode ? "2SAP_MCsample_Ham" : "2SAP_MCsample");
-
-	snprintf(vector_file, sizeof(vector_file), "%sdata/2SAP_R_Evector%s_TS_L%dM%d.txt", prefix, ham_mode ? "Ham" : "", L, M);
-	if (!write_legacy_2sap_tmcalc_source(legacy_tm_src, generated_tm_src, prefix)) {
-		return 1;
-	}
-	if (strlen(mc_dir) + 64 >= sizeof(tm_exe_path)) {
-		fprintf(stderr, "Generated TM path is too long.\n");
-		return 1;
-	}
-	sprintf(tm_exe_path, "%s/%s_L%dM%d", mc_dir, ham_mode ? "2sap_tmcalc_ham" : "2sap_tmcalc", L, M);
-	if (strlen(tm_exe_path) + strlen(generated_tm_src) + 64 >= sizeof(compile_cmd)) {
-		fprintf(stderr, "Generated TM compile command is too long.\n");
-		return 1;
-	}
-	sprintf(compile_cmd, "gcc -O3 -Wno-unused-result -o %s %s -lm", tm_exe_path, generated_tm_src);
-	printf("Compiling legacy %s2SAP TS eigenvector generator: %s\n", ham_mode ? "Hamiltonian " : "", compile_cmd);
-	if (system(compile_cmd) != 0) {
-		fprintf(stderr, "Failed to compile generated 2SAP TS eigenvector generator.\n");
-		return 1;
-	}
-	snprintf(run_cmd, sizeof(run_cmd), "%s", tm_exe_path);
-	printf("Generating legacy %s2SAP TS eigenvector for L=%d M=%d\n", ham_mode ? "Hamiltonian " : "", L, M);
-	if (system(run_cmd) != 0) {
-		fprintf(stderr, "Failed to generate legacy 2SAP TS eigenvector.\n");
-		return 1;
-	}
-	if (access(vector_file, R_OK) != 0) {
-		fprintf(stderr, "Expected 2SAP TS eigenvector was not created: %s\n", vector_file);
-		return 1;
-	}
 
 	if (!write_legacy_2sap_source(legacy_src, generated_src, prefix)) {
 		return 1;

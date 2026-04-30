@@ -18,6 +18,12 @@
 #include <sys/time.h>
 #include "../../include/marsaglia.h"
 
+double *MC_L_Evector[2];
+double *MC_R_Evector[2];
+unsigned long int **MC_tspans_edges;
+double fval = 0.0;
+double max_eval_LRvec(double fugacity);
+
 
 /** START OF DEFINITIONS THAT CHANGE DEPENDING ON SYSTEM BEING STUDIED **/
 //for now, need L,M>0, totalspan>0,
@@ -25,9 +31,9 @@
 #define	L 2
 #define	M 1
 #define	totalspan 5
-#define	samplesize 1
+#define	samplesize 2
 #define	runnum 1
-#define	seednum 227001
+#define	seednum 123
 
 #define	maxpolys 10000
 
@@ -1077,21 +1083,23 @@ int main(void) {
 
 //	static double R_Evector[max_tspans+1];
 
-	double* R_Evector;
-	R_Evector = (double*)malloc(sizeof(double)*(max_tspans+1));
-	if(R_Evector==NULL){
+	MC_L_Evector[0] = (double*)malloc(sizeof(double)*(max_tspans+1));
+	MC_L_Evector[1] = (double*)malloc(sizeof(double)*(max_tspans+1));
+	MC_R_Evector[0] = (double*)malloc(sizeof(double)*(max_tspans+1));
+	MC_R_Evector[1] = (double*)malloc(sizeof(double)*(max_tspans+1));
+	if(MC_L_Evector[0]==NULL || MC_L_Evector[1]==NULL || MC_R_Evector[0]==NULL || MC_R_Evector[1]==NULL){
 		fprintf(stderr, "Out of memory");
 		exit(0);
 	}
-
-
-	char filename2[100];		//this will hold the filename of the text file that we will read from
-	sprintf(filename2, "data/2SAP_R_EvectorHam_TS_L%dM%d.txt", L, M);
-	FILE* fp2 = fopen(filename2, "r");
-	for(i=1; i<= max_tspans; i++){
-		fscanf(fp2, "%lf\n", &R_Evector[i]);
+	MC_tspans_edges = (unsigned long int**)malloc(sizeof(unsigned long int*)*(max_keynum+1));
+	if(MC_tspans_edges==NULL){ fprintf(stderr, "Out of memory"); exit(0); }
+	for(i=1; i<=max_keynum; i++){
+		MC_tspans_edges[i] = unsgnlong_vecalloc(1, num_outsections[i]);
+		for(j=1; j<=num_outsections[i]; j++) MC_tspans_edges[i][j] = 0;
 	}
-
+	double calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;
+	printf("Calculated in-process TS eigenvalue=%.15f (Expected: %.15f)\n", calculated_dom_evalue, dom_evalue);
+	double* R_Evector = MC_R_Evector[0];
 /*
 	sumofprobs=0.0;
 	//check transition probabilities
@@ -5739,3 +5747,15 @@ void printtofile(){
 
 
 
+
+#define L_Evector MC_L_Evector
+#define R_Evector MC_R_Evector
+#define tspans_outsection t_outsection
+#define tspans_nrr t_nrr
+#define tspans_edges MC_tspans_edges
+#include "../../../phd_archive/src/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"
+#undef tspans_edges
+#undef tspans_nrr
+#undef tspans_outsection
+#undef L_Evector
+#undef R_Evector
