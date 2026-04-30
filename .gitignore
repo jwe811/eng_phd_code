@@ -1,0 +1,27 @@
+# Data files (often very large)
+**/data/*.txt
+**/data/*.bin
+**/data/*.dat
+
+# Simulation outputs
+MCpolys*.txt
+UofS*.txt
+
+# Binaries and Object files
+*.o
+*.out
+src/MCsample.o
+src/MASTER_TMcalc.o
+phd_master/tm_master
+phd_master/tm_opt
+phd_master/tm_orig
+phd_master/tm_v9
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

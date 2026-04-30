@@ -1,0 +1,708 @@
+/* 
+ * transfer_matrix_calculations.c
+ *
+ * Consolidated Master File for Transfer Matrix calculations in LxM tubes.
+ * Features: State Generation (Hashing), Numerical Solving (CSR/OpenMP),
+ * and Runtime CLI Configuration.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+#include <sys/time.h>
+#include <string.h>
+#include <stdint.h>
+#include <omp.h>
+#include <getopt.h>
+
+/* Forward Declarations */
+struct hinge_span;
+void enterhinge(int i, int j, int side, int poly, int (*pON)[]);
+void leavehinge(int i, int j, int side, int poly, int (*pON)[]);
+void rowedges(int i, int j, int poly, int (*pON)[]);
+void coledges(int i, int j, int poly, int (*pON)[]);
+void start_poly2(int (*pON)[]);
+unsigned short int LFlag(int (*pON)[]);
+unsigned short int LFlag2(int (*pON)[]);
+void export_matrix(void);
+
+/* ==========================================================================
+   CONFIGURATION VARIABLES
+   ========================================================================== */
+
+int mode = 0;
+int lat_L = 1;
+int lat_M = 1;
+
+#define L lat_L
+#define M lat_M
+#define vM (lat_M+1)
+#define vL (lat_L+1)
+#define force 0
+#define SS
+
+int num_polys = 1;
+int ham_check = 0;
+int damping_enabled = 0;
+double convergence_threshold = 1e-8;
+double manual_x = -1.0;
+int sampling_export = 0;
+
+/* Memory Scaling and Dynamic Allocation */
+unsigned long int actual_max_sections = 0;
+unsigned long int actual_max_keynum = 0;
+unsigned long int user_max_sections = 0;
+unsigned long int user_max_keynum = 0;
+
+unsigned long int *sectionkey = NULL;
+unsigned long int (*sectionkey2SAP)[2] = NULL;
+unsigned long int *num_outsections = NULL;
+unsigned long int *csr_out_states = NULL;
+unsigned long int *csr_edges = NULL;
+unsigned long int *csr_row_ptr = NULL;
+
+#define MAX_HEDGE ( (lat_M+1)*lat_L + lat_M*(lat_L+1) + 1 )
+
+typedef double vec_ent;
+typedef double mat_ent;
+
+/* ==========================================================================
+   STRUCTURES
+   ========================================================================== */
+
+struct hinge_span {
+    unsigned long int inorder2;
+    unsigned long int outorder;
+    unsigned long int outorder2;
+    unsigned int edgecount;
+    unsigned int edgecount2;
+    unsigned int *hedges;
+    struct hinge_span *nexthinge;
+};
+
+struct hinge_span **first_hinge_span = NULL;
+struct hinge_span **current_hinge_span = NULL;
+
+/* ==========================================================================
+   GLOBAL VARIABLES (Dynamic)
+   ========================================================================== */
+
+unsigned int ****ordertemplate_master = NULL;
+#define ordertemplate ordertemplate_master[0]
+#define ordertemplate2 ordertemplate_master[1]
+
+unsigned int ****reordertemplate_master = NULL;
+#define reordertemplate reordertemplate_master[0]
+#define reordertemplate2 reordertemplate_master[1]
+
+unsigned long int num_2_spans = 0;
+unsigned long int valid_2_spans = 0;
+unsigned short int **hingestatus = NULL;
+unsigned short int ***alreadyentered = NULL;
+unsigned short int **colhingeedges = NULL;
+unsigned short int **rowhingeedges = NULL;
+unsigned long int dupcounter = 0;
+
+vec_ent *L_Evector[2], *R_Evector[2];
+double connectivity_inv;
+unsigned long int actual_max_states = 0;
+
+/* ==========================================================================
+   UTILITY INCLUDES
+   ========================================================================== */
+
+#include "../deps/utils/unsgnlong_vecalloc.c"
+#include "../deps/utils/vecalloc.c"
+#include "../deps/utils/matalloc.c"
+
+#include "../deps/topology/LFlag_norder.c"
+#include "../deps/topology/LFlag_norder2.c"
+
+/* Universal Pattern Hasher (FNV-1a) */
+unsigned long int get_section_hash(int poly, int side) {
+    unsigned long int h = 14695981039346656037ULL;
+    for(int i=0; i<=lat_M; i++) {
+        for(int j=0; j<=lat_L; j++) {
+            h ^= reordertemplate_master[poly][side][i][j];
+            h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+unsigned long int get_section_num(int poly, int side) {
+    return get_section_hash(poly, side);
+}
+
+#define QM lat_M
+#undef M
+#include "../deps/utils/qcksrtII_int.c"
+#define M QM
+#include "../deps/analysis/statistics/rtflsp.c"
+
+/* ==========================================================================
+   CORE ENGINE
+   ========================================================================== */
+
+struct hinge_span* newhinge(void) {
+    struct hinge_span *n = (struct hinge_span *) calloc(1, sizeof(struct hinge_span));
+    if(!n) exit(1);
+    return n;
+}
+
+void fillreordertemplate(int poly, int ledges, int redges) {
+    int i, j, ii, jj, s;
+    int firstentry, secondentry, connectingedge;
+    for(s=0; s<=1; s++) {
+        for(i=0; i<=lat_M; i++) for(j=0; j<=lat_L; j++) reordertemplate_master[poly][s][i][j]=0;
+        firstentry=1;
+        for(i=0; i<=lat_M; i++) {
+            for(j=0; j<=lat_L; j++) {
+                if(ordertemplate_master[poly][s][i][j] % 2 != 0 && reordertemplate_master[poly][s][i][j]==0) {
+                    reordertemplate_master[poly][s][i][j] = firstentry;
+                    connectingedge = (ordertemplate_master[poly][s][i][j]==1) ? (s==0 ? ledges : redges) : (ordertemplate_master[poly][s][i][j]-1);
+                    secondentry = (firstentry==1) ? (s==0 ? ledges : redges) : (firstentry+1);
+                    for(ii=0; ii<=lat_M; ii++) for(jj=0; jj<=lat_L; jj++) if(ordertemplate_master[poly][s][ii][jj]==connectingedge) {
+                        reordertemplate_master[poly][s][ii][jj] = secondentry;
+                        firstentry = (firstentry==1) ? 2 : (firstentry+2);
+                        break;
+                    }
+                } else if(ordertemplate_master[poly][s][i][j]>0 && reordertemplate_master[poly][s][i][j]==0) {
+                    reordertemplate_master[poly][s][i][j] = firstentry;
+                    connectingedge = (s==0 && ordertemplate_master[poly][s][i][j]==ledges) || (s==1 && ordertemplate_master[poly][s][i][j]==redges) ? 1 : (ordertemplate_master[poly][s][i][j]+1);
+                    secondentry = (firstentry==1) ? (s==0 ? ledges : redges) : (firstentry+1);
+                    for(ii=0; ii<=lat_M; ii++) for(jj=0; jj<=lat_L; jj++) if(ordertemplate_master[poly][s][ii][jj]==connectingedge) {
+                        reordertemplate_master[poly][s][ii][jj] = secondentry;
+                        firstentry = (firstentry==1) ? 2 : (firstentry+2);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void recordtemplate(int (*pON)[]) {
+    unsigned long int inNum = get_section_num(0, 0);
+    int i, j, found=0;
+    for(i=1; i<=actual_max_sections && sectionkey[i]!=0; i++) if(sectionkey[i]==inNum) { found=1; inNum=i; break; }
+    if(!found && i<=actual_max_sections) { sectionkey[i]=inNum; inNum=i; }
+    else if (!found) { printf("Fatal: actual_max_sections overflow (%lu)\n", actual_max_sections); exit(1); }
+
+    unsigned long int outNum = get_section_num(0, 1);
+    found=0;
+    for(i=1; i<=actual_max_sections && sectionkey[i]!=0; i++) if(sectionkey[i]==outNum) { found=1; outNum=i; break; }
+    if(!found && i<=actual_max_sections) { sectionkey[i]=outNum; outNum=i; }
+
+    unsigned long int inNum2=0, outNum2=0;
+    if (num_polys == 2) {
+        inNum2 = get_section_num(1, 0);
+        found=0;
+        for(i=1; i<=actual_max_sections && sectionkey[i]!=0; i++) if(sectionkey[i]==inNum2) { found=1; inNum2=i; break; }
+        if(!found && i<=actual_max_sections) { sectionkey[i]=inNum2; inNum2=i; }
+        outNum2 = get_section_num(1, 1);
+        found=0;
+        for(i=1; i<=actual_max_sections && sectionkey[i]!=0; i++) if(sectionkey[i]==outNum2) { found=1; outNum2=i; break; }
+        if(!found && i<=actual_max_sections) { sectionkey[i]=outNum2; outNum2=i; }
+    }
+
+    int *pON_raw = (int*)pON;
+    unsigned int n_edges = pON_raw[0] + pON_raw[2] - 1;
+    unsigned int n_edges2 = (num_polys==2) ? (pON_raw[3] + pON_raw[5] - 1) : 0;
+    
+    unsigned int temp_hedges[MAX_HEDGE];
+    for(i=0; i<MAX_HEDGE; i++) temp_hedges[i]=0;
+    int idx=0, edgenum=1;
+    for(i=0; i<=lat_M; i++) for(j=0; j<lat_L; j++) { if(rowhingeedges[i][j]) temp_hedges[idx]=edgenum; idx++; edgenum++; }
+    for(i=0; i<lat_M; i++) for(j=0; j<=lat_L; j++) { if(colhingeedges[i][j]) temp_hedges[idx]=edgenum; idx++; edgenum++; }
+
+    int duplicate=0;
+    struct hinge_span* test = first_hinge_span[inNum];
+    while(test->nexthinge != NULL) {
+        test = test->nexthinge;
+        if(test->outorder==outNum && test->inorder2==inNum2 && test->outorder2==outNum2) {
+            if(test->edgecount==n_edges && test->edgecount2==n_edges2) {
+                int match=1;
+                for(i=0; i<MAX_HEDGE; i++) if(temp_hedges[i]!=test->hedges[i]) { match=0; break; }
+                if(match) { duplicate=1; dupcounter++; break; }
+            }
+        }
+    }
+    if(!duplicate) {
+        (*current_hinge_span[inNum]).nexthinge = (struct hinge_span*)calloc(1, sizeof(struct hinge_span));
+        current_hinge_span[inNum] = (*current_hinge_span[inNum]).nexthinge;
+        (*current_hinge_span[inNum]).inorder2 = inNum2;
+        (*current_hinge_span[inNum]).outorder = outNum;
+        (*current_hinge_span[inNum]).outorder2 = outNum2;
+        (*current_hinge_span[inNum]).edgecount = n_edges;
+        (*current_hinge_span[inNum]).edgecount2 = n_edges2;
+        (*current_hinge_span[inNum]).hedges = (unsigned int*)calloc(MAX_HEDGE, sizeof(unsigned int));
+        for(i=0; i<MAX_HEDGE; i++) (*current_hinge_span[inNum]).hedges[i]=temp_hedges[i];
+    }
+}
+
+void start_poly2(int (*pON)[]) {
+    for (int i=0; i<=lat_M; i++) {
+        for (int j=0; j<=lat_L; j++) {
+            if(!hingestatus[i][j]) enterhinge(i, j, 0, 1, pON);
+            alreadyentered[1][i][j]=1;
+        }
+    }
+    for (int i=0; i<=lat_M; i++) for (int j=0; j<=lat_L; j++) alreadyentered[1][i][j]=0;
+}
+
+void enterhinge(int i, int j, int side, int poly, int (*pON)[]) {
+    if(alreadyentered[poly][i][j]==1 && side==0) return;
+    int *pON_raw = (int*)pON;
+    hingestatus[i][j]=1; ordertemplate_master[poly][side][i][j] = pON_raw[poly*3 + side]; pON_raw[poly*3 + side]++;
+    leavehinge(i, j, side ^ 1, poly, pON); rowedges(i, j, poly, pON); coledges(i, j, poly, pON);
+    pON_raw[poly*3 + side]--; ordertemplate_master[poly][side][i][j] = 0; hingestatus[i][j]=0;
+}
+
+void leavehinge(int i, int j, int side, int poly, int (*pON)[]) {
+    if(alreadyentered[poly][i][j]==1 && side==0) return;
+    int *pON_raw = (int*)pON;
+    ordertemplate_master[poly][side][i][j] = pON_raw[poly*3 + side]; pON_raw[poly*3 + side]++;
+    if (side == 0 && pON_raw[poly*3 + 1] > 1) {
+        if (num_polys == 2 && poly == 0) {
+            if (pON_raw[0]-1 <= vM * vL - 2) start_poly2(pON);
+        } else {
+            if (num_polys == 2 ? LFlag2(pON) : LFlag(pON)) {
+                if (ham_check) {
+                    int isHam=1;
+                    for (int ii=0; ii<=lat_M; ii++) for (int jj=0; jj<=lat_L; jj++) if (!hingestatus[ii][jj]) { isHam=0; break; }
+                    if(isHam) { fillreordertemplate(0, pON_raw[0]-1, pON_raw[1]-1); if(num_polys==2) fillreordertemplate(1, pON_raw[3]-1, pON_raw[4]-1); recordtemplate(pON); valid_2_spans++; }
+                } else {
+                    fillreordertemplate(0, pON_raw[0]-1, pON_raw[1]-1); if(num_polys==2) fillreordertemplate(1, pON_raw[3]-1, pON_raw[4]-1); recordtemplate(pON); valid_2_spans++;
+                }
+            }
+        }
+        num_2_spans++;
+    }
+    for (int ii=0; ii<=lat_M; ii++) for (int jj=0; jj<=lat_L; jj++) if (!hingestatus[ii][jj]) enterhinge(ii, jj, side, poly, pON);
+    pON_raw[poly*3 + side]--; ordertemplate_master[poly][side][i][j] = 0;
+}
+
+void rowedges(int i, int j, int poly, int (*pON)[]) {
+    int *pON_raw = (int*)pON;
+    if(j>0 && !hingestatus[i][j-1]) { hingestatus[i][j-1]=1; pON_raw[poly*3 + 2]++; rowhingeedges[i][j-1]=1; leavehinge(i, j-1, 0, poly, pON); leavehinge(i, j-1, 1, poly, pON); rowedges(i, j-1, poly, pON); coledges(i, j-1, poly, pON); pON_raw[poly*3 + 2]--; hingestatus[i][j-1]=0; rowhingeedges[i][j-1]=0; }
+    if(j<lat_L && !hingestatus[i][j+1]) { hingestatus[i][j+1]=1; pON_raw[poly*3 + 2]++; rowhingeedges[i][j]=1; leavehinge(i, j+1, 0, poly, pON); leavehinge(i, j+1, 1, poly, pON); rowedges(i, j+1, poly, pON); coledges(i, j+1, poly, pON); pON_raw[poly*3 + 2]--; hingestatus[i][j+1]=0; rowhingeedges[i][j]=0; }
+}
+
+void coledges(int i, int j, int poly, int (*pON)[]) {
+    int *pON_raw = (int*)pON;
+    if(i>0 && !hingestatus[i-1][j]) { hingestatus[i-1][j]=1; pON_raw[poly*3 + 2]++; colhingeedges[i-1][j]=1; leavehinge(i-1, j, 0, poly, pON); leavehinge(i-1, j, 1, poly, pON); rowedges(i-1, j, poly, pON); coledges(i-1, j, poly, pON); pON_raw[poly*3 + 2]--; hingestatus[i-1][j]=0; colhingeedges[i-1][j]=0; }
+    if(i<lat_M && !hingestatus[i+1][j]) { hingestatus[i+1][j]=1; pON_raw[poly*3 + 2]++; colhingeedges[i][j]=1; leavehinge(i+1, j, 0, poly, pON); leavehinge(i+1, j, 1, poly, pON); rowedges(i+1, j, poly, pON); coledges(i+1, j, poly, pON); pON_raw[poly*3 + 2]--; hingestatus[i+1][j]=0; colhingeedges[i][j]=0; }
+}
+
+void allocate_resources(void) {
+    if (user_max_sections > 0) actual_max_sections = user_max_sections;
+    else if (lat_L * lat_M == 1) actual_max_sections = 1000;
+    else if (lat_L * lat_M == 2) actual_max_sections = 10000;
+    else if (lat_L * lat_M == 3) actual_max_sections = 50000;
+    else actual_max_sections = 500000;
+
+    if (user_max_keynum > 0) actual_max_keynum = user_max_keynum;
+    else if (lat_L * lat_M == 1) actual_max_keynum = 1000;
+    else if (lat_L * lat_M == 2) actual_max_keynum = 50000;
+    else if (lat_L * lat_M == 3) actual_max_keynum = 200000;
+    else actual_max_keynum = 2000000;
+
+    sectionkey = (unsigned long int*)calloc(actual_max_sections + 1, sizeof(unsigned long int));
+    sectionkey2SAP = (unsigned long int(*)[2])calloc(actual_max_keynum + 1, sizeof(unsigned long int[2]));
+    num_outsections = (unsigned long int*)calloc(actual_max_keynum + 1, sizeof(unsigned long int));
+    csr_row_ptr = (unsigned long int*)calloc(actual_max_keynum + 2, sizeof(unsigned long int));
+    first_hinge_span = (struct hinge_span**)calloc(actual_max_sections + 1, sizeof(struct hinge_span*));
+    current_hinge_span = (struct hinge_span**)calloc(actual_max_sections + 1, sizeof(struct hinge_span*));
+
+    int p, s, i;
+    ordertemplate_master = (unsigned int ****)calloc(num_polys, sizeof(unsigned int ***));
+    reordertemplate_master = (unsigned int ****)calloc(num_polys, sizeof(unsigned int ***));
+    for(p=0; p<num_polys; p++) {
+        ordertemplate_master[p] = (unsigned int ***)calloc(2, sizeof(unsigned int **));
+        reordertemplate_master[p] = (unsigned int ***)calloc(2, sizeof(unsigned int **));
+        for(s=0; s<2; s++) {
+            ordertemplate_master[p][s] = (unsigned int **)calloc(vM, sizeof(unsigned int *));
+            reordertemplate_master[p][s] = (unsigned int **)calloc(vM, sizeof(unsigned int *));
+            for(i=0; i<vM; i++) {
+                ordertemplate_master[p][s][i] = (unsigned int *)calloc(vL, sizeof(unsigned int));
+                reordertemplate_master[p][s][i] = (unsigned int *)calloc(vL, sizeof(unsigned int));
+            }
+        }
+    }
+    hingestatus = (unsigned short int **)calloc(vM, sizeof(unsigned short int *));
+    colhingeedges = (unsigned short int **)calloc(vM, sizeof(unsigned short int *));
+    rowhingeedges = (unsigned short int **)calloc(vM, sizeof(unsigned short int *));
+    for(i=0; i<vM; i++) {
+        hingestatus[i] = (unsigned short int *)calloc(vL, sizeof(unsigned short int));
+        colhingeedges[i] = (unsigned short int *)calloc(vL, sizeof(unsigned short int));
+        rowhingeedges[i] = (unsigned short int *)calloc(vL, sizeof(unsigned short int));
+    }
+    alreadyentered = (unsigned short int ***)calloc(num_polys, sizeof(unsigned short int **));
+    for(p=0; p<num_polys; p++) {
+        alreadyentered[p] = (unsigned short int **)calloc(vM, sizeof(unsigned short int *));
+        for(i=0; i<vM; i++) alreadyentered[p][i] = (unsigned short int *)calloc(vL, sizeof(unsigned short int));
+    }
+}
+
+#define HASH_SIZE 131072
+struct hash_node {
+    unsigned long int s1, s2;
+    unsigned long int key;
+    struct hash_node *next;
+} *hash_table[HASH_SIZE];
+
+unsigned long int get_composite_key(unsigned long int s1, unsigned long int s2, unsigned long int *pKey) {
+    unsigned long int h = (s1 * 31337 + s2) % HASH_SIZE;
+    struct hash_node *n = hash_table[h];
+    while(n) { if(n->s1 == s1 && n->s2 == s2) return n->key; n = n->next; }
+    (*pKey)++;
+    if (*pKey > actual_max_keynum) { printf("Fatal: actual_max_keynum overflow (%lu)\n", actual_max_keynum); exit(1); }
+    n = (struct hash_node*)malloc(sizeof(struct hash_node));
+    n->s1 = s1; n->s2 = s2; n->key = *pKey; n->next = hash_table[h];
+    hash_table[h] = n;
+    sectionkey2SAP[*pKey][0] = s1; sectionkey2SAP[*pKey][1] = s2;
+    return *pKey;
+}
+
+void conv_to_array(void) {
+    unsigned long int i, j, s, key=0;
+    struct hinge_span *curr, *tofree;
+    for(i=0; i<HASH_SIZE; i++) hash_table[i]=NULL;
+
+    if (num_polys == 2) {
+        for(s=1; s<=actual_max_sections; s++) {
+            if (!first_hinge_span[s]) continue;
+            curr = first_hinge_span[s];
+            while(curr->nexthinge) { curr = curr->nexthinge; get_composite_key(s, curr->inorder2, &key); }
+        }
+        actual_max_states = key;
+    } else {
+        for(s=1; s<=actual_max_sections; s++) if(sectionkey[s]!=0) actual_max_states = s;
+    }
+
+    unsigned long int total_transitions = 0;
+    for(s=1; s<=actual_max_states; s++) {
+        unsigned long int n = 0;
+        if (num_polys == 2) {
+            unsigned long int s1 = sectionkey2SAP[s][0], s2_in = sectionkey2SAP[s][1];
+            curr = first_hinge_span[s1];
+            while(curr->nexthinge) { curr = curr->nexthinge; if(curr->inorder2 == s2_in) n++; }
+        } else {
+            curr = first_hinge_span[s];
+            while(curr->nexthinge) { curr = curr->nexthinge; n++; }
+        }
+        num_outsections[s] = n;
+        csr_row_ptr[s+1] = csr_row_ptr[s] + n;
+        total_transitions += n;
+    }
+    csr_out_states = (unsigned long int*)calloc(total_transitions + 1, sizeof(unsigned long int));
+    csr_edges = (unsigned long int*)calloc(total_transitions + 1, sizeof(unsigned long int));
+
+    unsigned long int *curIdx = (unsigned long int*)calloc(actual_max_keynum + 1, sizeof(unsigned long int));
+    for(i=1; i<=actual_max_states; i++) curIdx[i]=1;
+    for(s=1; s<=actual_max_sections; s++) {
+        if (!first_hinge_span[s]) continue;
+        curr = first_hinge_span[s];
+        while(curr->nexthinge) {
+            tofree = curr; curr = curr->nexthinge; free(tofree);
+            unsigned long int srcKey=0, destKey=0;
+            if (num_polys == 2) {
+                unsigned long int h = (s * 31337 + curr->inorder2) % HASH_SIZE;
+                struct hash_node *n = hash_table[h];
+                while(n) { if(n->s1 == s && n->s2 == curr->inorder2) { srcKey = n->key; break; } n = n->next; }
+                h = (curr->outorder * 31337 + curr->outorder2) % HASH_SIZE;
+                n = hash_table[h];
+                while(n) { if(n->s1 == curr->outorder && n->s2 == curr->outorder2) { destKey = n->key; break; } n = n->next; }
+            } else {
+                srcKey = s;
+                destKey = curr->outorder;
+            }
+            if(srcKey && destKey) {
+                unsigned long int offset = csr_row_ptr[srcKey] + (curIdx[srcKey] - 1);
+                csr_out_states[offset + 1] = destKey;
+                csr_edges[offset + 1] = curr->edgecount + curr->edgecount2;
+                curIdx[srcKey]++;
+            }
+        }
+    }
+    free(curIdx);
+    for(i=1; i<=actual_max_states; i++) if(num_outsections[i] > 0) qcksrtII(num_outsections[i], &csr_out_states[csr_row_ptr[i]], &csr_edges[csr_row_ptr[i]]);
+}
+
+double max_eval_LRvec(double fugacity) {
+    int i, k; unsigned long int in_s, out_s, nth; double L0, L1, R0, R1;
+    double *fug_pow = (double*)malloc((MAX_HEDGE * 2 + 1) * sizeof(double));
+    for(i=0; i<=MAX_HEDGE * 2; i++) fug_pow[i] = pow(fugacity, i);
+    for(i=1; i<=actual_max_states; i++) { L_Evector[0][i]=1; R_Evector[0][i]=1; }
+    for(k=1; k<=500; k++) {
+        L0=0.1; R0=0.1;
+        for(i=1; i<=actual_max_states; i++) { L_Evector[1][i]=0; R_Evector[1][i]=0; }
+        #pragma omp parallel for private(in_s, nth, out_s)
+        for(in_s=1; in_s<=actual_max_states; in_s++) {
+            unsigned long int row_start = csr_row_ptr[in_s], row_end = csr_row_ptr[in_s+1];
+            for(nth=row_start + 1; nth<=row_end; nth++) {
+                double pwf = fug_pow[csr_edges[nth]];
+                out_s = csr_out_states[nth];
+                #pragma omp atomic update
+                L_Evector[1][out_s] += L_Evector[0][in_s]*pwf;
+                R_Evector[1][in_s] += R_Evector[0][out_s]*pwf;
+            }
+        }
+        #pragma omp parallel for reduction(max:L0, R0)
+        for(i=1; i<=actual_max_states; i++) { if(L_Evector[1][i]>L0) L0=L_Evector[1][i]; if(R_Evector[1][i]>R0) R0=R_Evector[1][i]; }
+        for(i=1; i<=actual_max_states; i++) { 
+            double nL = L_Evector[1][i]/L0;
+            double nR = R_Evector[1][i]/R0;
+            if(damping_enabled) {
+                L_Evector[1][i] = 0.5 * L_Evector[0][i] + 0.5 * nL;
+                R_Evector[1][i] = 0.5 * R_Evector[0][i] + 0.5 * nR;
+            } else {
+                L_Evector[1][i] = nL;
+                R_Evector[1][i] = nR;
+            }
+        }
+        L1=0.1; R1=0.1;
+        for(i=1; i<=actual_max_states; i++) { L_Evector[0][i]=0; R_Evector[0][i]=0; }
+        #pragma omp parallel for private(in_s, nth, out_s)
+        for(in_s=1; in_s<=actual_max_states; in_s++) {
+            unsigned long int row_start = csr_row_ptr[in_s], row_end = csr_row_ptr[in_s+1];
+            for(nth=row_start + 1; nth<=row_end; nth++) {
+                double pwf = fug_pow[csr_edges[nth]];
+                out_s = csr_out_states[nth];
+                #pragma omp atomic update
+                L_Evector[0][out_s] += L_Evector[1][in_s]*pwf;
+                R_Evector[0][in_s] += R_Evector[1][out_s]*pwf;
+            }
+        }
+        #pragma omp parallel for reduction(max:L1, R1)
+        for(i=1; i<=actual_max_states; i++) { if(L_Evector[0][i]>L1) L1=L_Evector[0][i]; if(R_Evector[0][i]>R1) R1=R_Evector[0][i]; }
+        for(i=1; i<=actual_max_states; i++) { 
+            double nL = L_Evector[0][i]/L1;
+            double nR = R_Evector[0][i]/R1;
+            if(damping_enabled) {
+                L_Evector[0][i] = 0.5 * L_Evector[1][i] + 0.5 * nL;
+                R_Evector[0][i] = 0.5 * R_Evector[1][i] + 0.5 * nR;
+            } else {
+                L_Evector[0][i] = nL;
+                R_Evector[0][i] = nR;
+            }
+        }
+        #pragma omp master
+        { }
+        if(fabs(L1-L0)<convergence_threshold && fabs(R1-R0)<convergence_threshold) { free(fug_pow); return R1 - 1.0; }
+    }
+    free(fug_pow); exit(1);
+}
+
+double get_Beta(double kappa) {
+    double B=0; unsigned long int i, j;
+    double *fug_pow = (double*)malloc((MAX_HEDGE * 2 + 1) * sizeof(double));
+    for(i=0; i<=MAX_HEDGE * 2; i++) fug_pow[i] = pow(kappa, i);
+    #pragma omp parallel for reduction(+:B) private(i, j)
+    for(i=1; i<=actual_max_states; i++) {
+        unsigned long int row_start = csr_row_ptr[i], row_end = csr_row_ptr[i+1];
+        for(j=row_start + 1; j<=row_end; j++) {
+            double pwf = fug_pow[csr_edges[j]]; 
+            unsigned long int out_state = csr_out_states[j];
+            B += L_Evector[0][i] * csr_edges[j] * pwf * R_Evector[0][out_state];
+        }
+    }
+    free(fug_pow); return B;
+}
+
+void export_eigenvectors(void) {
+    const char *mode_suffixes[] = {"std", "ham", "2sap", "2sap_ham"};
+    const char *suffix = (mode >= 0 && mode <= 3) ? mode_suffixes[mode] : "unk";
+    
+    if (sampling_export) {
+        char fn[128];
+        const char *mc_prefix = (mode == 2 || mode == 3) ? "2SAP_" : "";
+        const char *mc_ham = (mode == 1 || mode == 3) ? "Ham" : "";
+        sprintf(fn, "data/%sR_Evector%s_TS_L%dM%d.txt", mc_prefix, mc_ham, lat_L, lat_M);
+        
+        FILE *fp = fopen(fn, "w");
+        if (!fp) { fprintf(stderr, "Error: Could not open %s for export\n", fn); return; }
+        
+        unsigned long int i, j;
+        for (i = 1; i <= actual_max_states; i++) {
+            unsigned long int row_start = csr_row_ptr[i];
+            unsigned long int row_end = csr_row_ptr[i+1];
+            for (j = row_start + 1; j <= row_end; j++) {
+                // For each transition i -> j, MC scripts expect R_Evector[trans_num] = V_outstate
+                fprintf(fp, "%.15f\n", R_Evector[0][csr_out_states[j]]);
+            }
+        }
+        fclose(fp);
+        printf("[Phase 3] Transition-indexed eigenvector exported to %s\n", fn);
+        return;
+    }
+
+    char fn1[100], fn2[100];
+    sprintf(fn1, "data/L_Evector_L%dM%d_%s.txt", lat_L, lat_M, suffix);
+    sprintf(fn2, "data/R_Evector_L%dM%d_%s.txt", lat_L, lat_M, suffix);
+    FILE *fp1 = fopen(fn1, "w"), *fp2 = fopen(fn2, "w");
+    if(!fp1 || !fp2) return;
+    for(unsigned long int i=1; i<=actual_max_states; i++) { fprintf(fp1, "%.15f\n", L_Evector[0][i]); fprintf(fp2, "%.15f\n", R_Evector[0][i]); }
+    fclose(fp1); fclose(fp2);
+}
+
+void export_matrix(void) {
+    const char *mode_suffixes[] = {"std", "ham", "2sap", "2sap_ham"};
+    const char *suffix = (mode >= 0 && mode <= 3) ? mode_suffixes[mode] : "unk";
+    char fn[100];
+    sprintf(fn, "data/CSR_L%dM%d_%s.bin", lat_L, lat_M, suffix);
+    FILE *fp = fopen(fn, "wb");
+    if(!fp) return;
+    unsigned long int total_transitions = csr_row_ptr[actual_max_states + 1];
+    fwrite(&actual_max_states, sizeof(unsigned long int), 1, fp);
+    fwrite(&total_transitions, sizeof(unsigned long int), 1, fp);
+    fwrite(csr_row_ptr, sizeof(unsigned long int), actual_max_states + 2, fp);
+    fwrite(csr_out_states, sizeof(unsigned long int), total_transitions + 1, fp);
+    fwrite(csr_edges, sizeof(unsigned long int), total_transitions + 1, fp);
+    fclose(fp);
+}
+
+void cleanup_resources(void) {
+    int p, s, i;
+    for(p=0; p<num_polys; p++) {
+        for(s=0; s<2; s++) {
+            for(i=0; i<vM; i++) {
+                free(ordertemplate_master[p][s][i]);
+                free(reordertemplate_master[p][s][i]);
+            }
+            free(ordertemplate_master[p][s]);
+            free(reordertemplate_master[p][s]);
+        }
+        free(ordertemplate_master[p]);
+        free(reordertemplate_master[p]);
+        for(i=0; i<vM; i++) free(alreadyentered[p][i]);
+        free(alreadyentered[p]);
+    }
+    free(ordertemplate_master); free(reordertemplate_master); free(alreadyentered);
+    for(i=0; i<vM; i++) { free(hingestatus[i]); free(colhingeedges[i]); free(rowhingeedges[i]); }
+    free(hingestatus); free(colhingeedges); free(rowhingeedges);
+    free(sectionkey); free(sectionkey2SAP); free(num_outsections); free(csr_row_ptr);
+    free(first_hinge_span); free(current_hinge_span);
+    free(csr_out_states); free(csr_edges);
+    free(L_Evector[0]); free(L_Evector[1]); free(R_Evector[0]); free(R_Evector[1]);
+    for(i=0; i<HASH_SIZE; i++) {
+        struct hash_node *curr = hash_table[i], *tmp;
+        while(curr) { tmp = curr; curr = curr->next; free(tmp); }
+    }
+}
+
+void print_usage(char *prog) { 
+    printf("Usage: %s [-L lat_L] [-M lat_M] [-m mode] [-S max_sec] [-K max_key] [-c conv] [-d] [-x x_val] [-E]\n", prog);
+    printf("  -x x_val : Manually set fugacity (skips root finding, e.g., -x 1.0 for sampling)\n");
+    printf("  -E       : Export transition-indexed eigenvectors for Monte Carlo sampling\n");
+}
+
+int main(int argc, char **argv) {
+    int opt;
+    while ((opt = getopt(argc, argv, "L:M:m:S:K:c:dx:Eh")) != -1) {
+        char *endptr;
+        switch (opt) {
+            case 'L': 
+                lat_L = (int)strtol(optarg, &endptr, 10);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Lattice Width (-L) must be an integer (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'M': 
+                lat_M = (int)strtol(optarg, &endptr, 10);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Lattice Height (-M) must be an integer (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'm': 
+                mode = (int)strtol(optarg, &endptr, 10);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Mode (-m) must be an integer (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'S': 
+                user_max_sections = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Max Sections (-S) must be an integer (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'K': 
+                user_max_keynum = strtoul(optarg, &endptr, 10);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Max Keynum (-K) must be an integer (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'c': 
+                convergence_threshold = strtod(optarg, &endptr);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Convergence (-c) must be a number (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'd': damping_enabled = 1; break;
+            case 'x':
+                manual_x = strtod(optarg, &endptr);
+                if (*endptr != '\0') { fprintf(stderr, "Error: Fugacity (-x) must be a number (received '%s')\n", optarg); exit(1); }
+                break;
+            case 'E': sampling_export = 1; break;
+            case 'h': print_usage(argv[0]); return 0;
+            default: print_usage(argv[0]); return 1;
+        }
+    }
+    if (mode == 2 || mode == 3) num_polys = 2;
+    if (mode == 1 || mode == 3) { ham_check = 1; damping_enabled = 1; }
+
+    /* Validation Logic */
+    int validation_failed = 0;
+    if (lat_L < 0) { fprintf(stderr, "Error: Lattice Width (-L) must be >= 0 (received %d)\n", lat_L); validation_failed = 1; }
+    if (lat_M < 0) { fprintf(stderr, "Error: Lattice Height (-M) must be >= 0 (received %d)\n", lat_M); validation_failed = 1; }
+    if (lat_L == 0 && lat_M == 0) { fprintf(stderr, "Error: At least one dimension (L or M) must be > 0.\n"); validation_failed = 1; }
+    if (mode < 0 || mode > 3) { fprintf(stderr, "Error: Invalid Simulation Mode (-m %d). Valid modes are 0, 1, 2, 3.\n", mode); validation_failed = 1; }
+    if (convergence_threshold <= 0) { fprintf(stderr, "Error: Convergence threshold (-c) must be positive.\n"); validation_failed = 1; }
+    
+    if (validation_failed) {
+        printf("\n");
+        print_usage(argv[0]);
+        exit(1);
+    }
+
+    double t_start = omp_get_wtime();
+    int ordNum[6], i, j;
+    printf("[Phase 1] Initializing resources and generating state space...\n");
+    allocate_resources();
+    for (int p=0; p<num_polys; p++) { ordNum[p*3+0]=1; ordNum[p*3+1]=1; ordNum[p*3+2]=0; }
+    for (i=1; i<=actual_max_sections; i++) { first_hinge_span[i]=newhinge(); current_hinge_span[i]=first_hinge_span[i]; sectionkey[i]=0; }
+    for (i=0; i<=lat_M; i++) for (j=0; j<=lat_L; j++) { if(!(i==lat_M && j==lat_L)) enterhinge(i, j, 0, 0, (int(*)[])&ordNum); alreadyentered[0][i][j]=1; }
+    conv_to_array();
+    double t_gen = omp_get_wtime();
+    printf("[Phase 2] State space complete (%lu states). Solving eigenvalue problem...\n", actual_max_states);
+
+    L_Evector[0]=vecalloc(0, actual_max_states); L_Evector[1]=vecalloc(0, actual_max_states);
+    R_Evector[0]=vecalloc(0, actual_max_states); R_Evector[1]=vecalloc(0, actual_max_states);
+    
+    if (manual_x > 0) {
+        connectivity_inv = manual_x;
+        double max_Evalue = max_eval_LRvec(connectivity_inv) + 1.0;
+        printf("[Phase 3] Solved at manual fugacity x=%.6f. Dominant Eigenvalue=%.15f\n", connectivity_inv, max_Evalue);
+    } else {
+        connectivity_inv = rtflsp(&max_eval_LRvec, 0.3, 0.8, 1e-8);
+    }
+    printf("[Phase 3] Convergence reached. Aligning with thesis specification...\n");
+    
+    double LmultR = 0;
+    for(i=1; i<=actual_max_states; i++) LmultR += L_Evector[0][i]*R_Evector[0][i];
+
+    /* Authoritative Thesis Specification Alignment */
+    double Beta = get_Beta(connectivity_inv) / LmultR;
+    double Alpha = connectivity_inv / Beta;
+    double t_solve = omp_get_wtime();
+
+    const char *mode_names[] = {"Standard", "Hamiltonian", "2SAP", "2SAP-Hamiltonian"};
+    const char *mode_name = (mode >= 0 && mode <= 3) ? mode_names[mode] : "Unknown";
+
+    printf("\n--- RESEARCH RESULTS (%dx%d %s) ---\n", lat_L, lat_M, mode_name);
+    printf("Critical Fugacity (x_0):  %f\n", connectivity_inv);
+    printf("Connective Constant (mu): %f\n", 1.0/connectivity_inv);
+    printf("Alpha (Amplitude):        %e\n", Alpha);
+    printf("Beta (Growth Parameter):  %e\n", Beta);
+
+    unsigned long int total_trans = csr_row_ptr[actual_max_states+1];
+    printf("\n--- PERFORMANCE TELEMETRY ---\n");
+    printf("State Generation: %.3f s\n", t_gen - t_start);
+    printf("Matrix Solving:   %.3f s (Total: %.3f s)\n", t_solve - t_gen, t_solve - t_start);
+    printf("Transitions:      %lu (TPS: %.2e)\n", total_trans, (double)total_trans / (t_solve - t_gen));
+
+    export_eigenvectors();
+    export_matrix();
+    cleanup_resources();
+    return 0;
+}
