@@ -28,12 +28,12 @@ double max_eval_LRvec(double fugacity);
 /** START OF DEFINITIONS THAT CHANGE DEPENDING ON SYSTEM BEING STUDIED **/
 //for now, need L,M>0, totalspan>0,
 
-#define	L 2
+#define	L 3
 #define	M 1
 #define	totalspan 5
-#define	samplesize 2
+#define	samplesize 5
 #define	runnum 1
-#define	seednum 123
+#define	seednum 227001
 
 #define	maxpolys 10000
 
