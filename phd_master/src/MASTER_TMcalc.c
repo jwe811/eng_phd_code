@@ -117,12 +117,15 @@ unsigned long int actual_max_states = 0;
    UTILITY INCLUDES
    ========================================================================== */
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #include "../deps/utils/unsgnlong_vecalloc.c"
 #include "../deps/utils/vecalloc.c"
 #include "../deps/utils/matalloc.c"
 
 #include "../deps/topology/LFlag_norder.c"
 #include "../deps/topology/LFlag_norder2.c"
+#pragma GCC diagnostic pop
 
 /* Universal Pattern Hasher (FNV-1a) */
 unsigned long int get_section_hash(int poly, int side) {
@@ -142,7 +145,10 @@ unsigned long int get_section_num(int poly, int side) {
 
 #define QM lat_M
 #undef M
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #include "../deps/utils/qcksrtII_int.c"
+#pragma GCC diagnostic pop
 #define M QM
 #include "../deps/analysis/statistics/rtflsp.c"
 

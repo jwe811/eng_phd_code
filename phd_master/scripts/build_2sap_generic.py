@@ -19,6 +19,8 @@ extern int samplesize;
 extern int runnum;
 extern unsigned int seednum;
 extern int maxpolys;
+extern int mode;
+extern int ham_check;
 
 extern int max_sections;
 extern int max_tspans;
@@ -92,6 +94,8 @@ unsigned long int **MC_tspans_edges;
         content += '\n#define tspans_nrr t_nrr\n#define tspans_edges MC_tspans_edges\n#define L_Evector MC_L_Evector\n#define R_Evector MC_R_Evector\n#define tspans_outsection t_outsection\n#include "archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP.c"\n#undef tspans_nrr\n#undef tspans_edges\n#undef L_Evector\n#undef R_Evector\n#undef tspans_outsection\n'
 
     # 6. Main and Allocations
+    generated_mode = 3 if is_ham else 2
+    generated_ham_check = 1 if is_ham else 0
     cli_parser = """
     int opt;
     while ((opt = getopt(argc, argv, "L:M:s:n:r:S:")) != -1) {
@@ -104,8 +108,13 @@ unsigned long int **MC_tspans_edges;
             case 'S': seednum = (unsigned int)atoi(optarg); break;
         }
     }
+    mode = __GENERATED_MODE__;
+    ham_check = __GENERATED_HAM_CHECK__;
     set_system_params();
+    max_keynum = MAX_KEYNUM_ARR - 1;
     """
+    cli_parser = cli_parser.replace("__GENERATED_MODE__", str(generated_mode))
+    cli_parser = cli_parser.replace("__GENERATED_HAM_CHECK__", str(generated_ham_check))
     content = content.replace('int main(void)', 'int main(int argc, char *argv[])')
     
     dynamic_allocs = cli_parser + """
@@ -113,10 +122,10 @@ unsigned long int **MC_tspans_edges;
     current_hinge_span = (struct hinge_span**)malloc(sizeof(struct hinge_span*) * (max_sections + 1));
     firstendhinge = (struct endhinge**)malloc(sizeof(struct endhinge*) * (max_sections + 1));
     currentendhinge = (struct endhinge**)malloc(sizeof(struct endhinge*) * (max_sections + 1));
-    MC_L_Evector[0] = (double*)calloc(max_tspans+1, sizeof(double));
-    MC_L_Evector[1] = (double*)calloc(max_tspans+1, sizeof(double));
-    MC_R_Evector[0] = (double*)calloc(max_tspans+1, sizeof(double));
-    MC_R_Evector[1] = (double*)calloc(max_tspans+1, sizeof(double));
+    MC_L_Evector[0] = (double*)calloc(max_keynum+1, sizeof(double));
+    MC_L_Evector[1] = (double*)calloc(max_keynum+1, sizeof(double));
+    MC_R_Evector[0] = (double*)calloc(max_keynum+1, sizeof(double));
+    MC_R_Evector[1] = (double*)calloc(max_keynum+1, sizeof(double));
     MC_tspans_edges = (unsigned long int**)malloc(sizeof(unsigned long int*)*(max_keynum+1));
     for(int k=1; k<=max_keynum; k++){
         MC_tspans_edges[k] = unsgnlong_vecalloc(1, num_outsections[k]);

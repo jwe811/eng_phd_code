@@ -1,4 +1,5 @@
 #include "mc_globals.h"
+#include "mc_runtime.h"
 
 
 
@@ -72,28 +73,28 @@ unsigned long int filenum=1;
 
 
 unsigned int*** allocate_3d_uint(int d1, int d2, int d3) {
-    unsigned int ***arr = (unsigned int***)malloc(d1 * sizeof(unsigned int**));
+    unsigned int ***arr = (unsigned int***)mc_xmalloc(d1 * sizeof(unsigned int**), "3D unsigned int outer array");
     for (int i = 0; i < d1; i++) {
-        arr[i] = (unsigned int**)malloc(d2 * sizeof(unsigned int*));
+        arr[i] = (unsigned int**)mc_xmalloc(d2 * sizeof(unsigned int*), "3D unsigned int middle array");
         for (int j = 0; j < d2; j++) {
-            arr[i][j] = (unsigned int*)calloc(d3, sizeof(unsigned int));
+            arr[i][j] = (unsigned int*)mc_xcalloc(d3, sizeof(unsigned int), "3D unsigned int row");
         }
     }
     return arr;
 }
 
 unsigned short int** allocate_2d_ushort(int d1, int d2) {
-    unsigned short int **arr = (unsigned short int**)malloc(d1 * sizeof(unsigned short int*));
+    unsigned short int **arr = (unsigned short int**)mc_xmalloc(d1 * sizeof(unsigned short int*), "2D unsigned short outer array");
     for (int i = 0; i < d1; i++) {
-        arr[i] = (unsigned short int*)calloc(d2, sizeof(unsigned short int));
+        arr[i] = (unsigned short int*)mc_xcalloc(d2, sizeof(unsigned short int), "2D unsigned short row");
     }
     return arr;
 }
 
 int** allocate_2d_int(int d1, int d2) {
-    int **arr = (int**)malloc(d1 * sizeof(int*));
+    int **arr = (int**)mc_xmalloc(d1 * sizeof(int*), "2D int outer array");
     for (int i = 0; i < d1; i++) {
-        arr[i] = (int*)calloc(d2, sizeof(int));
+        arr[i] = (int*)mc_xcalloc(d2, sizeof(int), "2D int row");
     }
     return arr;
 }
@@ -105,38 +106,38 @@ void allocate_globals() {
     alreadyentered = allocate_2d_ushort(vM, vL);
     colhingeedges = allocate_2d_ushort(vM, vL); // Used as colhingeedges[M][vL], vM is enough
     rowhingeedges = allocate_2d_ushort(vM, vL);
-    sectionkey = (unsigned long int*)calloc(vec_length, sizeof(unsigned long int));
+    sectionkey = (unsigned long int*)mc_xcalloc(vec_length, sizeof(unsigned long int), "section keys");
     
-    num_outsections = (unsigned long int*)calloc(vec_length, sizeof(unsigned long int));
-    t_outsection = (unsigned long int**)calloc(vec_length, sizeof(unsigned long int*));
-    t_nrr = (unsigned long int**)calloc(vec_length, sizeof(unsigned long int*));
-    t_num_walks = (unsigned int**)calloc(vec_length, sizeof(unsigned int*));
-    t_start = (int****)calloc(vec_length, sizeof(int***));
-    t_end = (int****)calloc(vec_length, sizeof(int***));
-    t_walks = (int****)calloc(vec_length, sizeof(int***));
-    tspans_edges = (unsigned int**)calloc(vec_length, sizeof(unsigned int*));
+    num_outsections = (unsigned long int*)mc_xcalloc(vec_length, sizeof(unsigned long int), "outsection counts");
+    t_outsection = (unsigned long int**)mc_xcalloc(vec_length, sizeof(unsigned long int*), "tspan outsections");
+    t_nrr = (unsigned long int**)mc_xcalloc(vec_length, sizeof(unsigned long int*), "tspan numbers");
+    t_num_walks = (unsigned int**)mc_xcalloc(vec_length, sizeof(unsigned int*), "tspan walk counts");
+    t_start = (int****)mc_xcalloc(vec_length, sizeof(int***), "tspan starts");
+    t_end = (int****)mc_xcalloc(vec_length, sizeof(int***), "tspan ends");
+    t_walks = (int****)mc_xcalloc(vec_length, sizeof(int***), "tspan walks");
+    tspans_edges = (unsigned int**)mc_xcalloc(vec_length, sizeof(unsigned int*), "tspan edges");
     
-    L_Evector[0] = (double*)calloc(max_tspans + 1, sizeof(double));
-    L_Evector[1] = (double*)calloc(max_tspans + 1, sizeof(double));
-    R_Evector_solve[0] = (double*)calloc(max_tspans + 1, sizeof(double));
-    R_Evector_solve[1] = (double*)calloc(max_tspans + 1, sizeof(double));
+    L_Evector[0] = (double*)mc_xcalloc(max_tspans + 1, sizeof(double), "left eigenvector");
+    L_Evector[1] = (double*)mc_xcalloc(max_tspans + 1, sizeof(double), "left eigenvector scratch");
+    R_Evector_solve[0] = (double*)mc_xcalloc(max_tspans + 1, sizeof(double), "right eigenvector");
+    R_Evector_solve[1] = (double*)mc_xcalloc(max_tspans + 1, sizeof(double), "right eigenvector scratch");
     
-    num_left_endhinges = (unsigned long int*)calloc(vec_length, sizeof(unsigned long int));
-    Lend_num_walks = (unsigned int**)calloc(vec_length, sizeof(unsigned int*));
-    Lend_start = (int****)calloc(vec_length, sizeof(int***));
-    Lend_end = (int****)calloc(vec_length, sizeof(int***));
-    Lend_walks = (int****)calloc(vec_length, sizeof(int***));
+    num_left_endhinges = (unsigned long int*)mc_xcalloc(vec_length, sizeof(unsigned long int), "left endhinge counts");
+    Lend_num_walks = (unsigned int**)mc_xcalloc(vec_length, sizeof(unsigned int*), "left endhinge walk counts");
+    Lend_start = (int****)mc_xcalloc(vec_length, sizeof(int***), "left endhinge starts");
+    Lend_end = (int****)mc_xcalloc(vec_length, sizeof(int***), "left endhinge ends");
+    Lend_walks = (int****)mc_xcalloc(vec_length, sizeof(int***), "left endhinge walks");
     
-    num_right_endhinges = (unsigned long int*)calloc(vec_length, sizeof(unsigned long int));
-    Rend_num_walks = (unsigned int**)calloc(vec_length, sizeof(unsigned int*));
-    Rend_start = (int****)calloc(vec_length, sizeof(int***));
-    Rend_end = (int****)calloc(vec_length, sizeof(int***));
-    Rend_walks = (int****)calloc(vec_length, sizeof(int***));
+    num_right_endhinges = (unsigned long int*)mc_xcalloc(vec_length, sizeof(unsigned long int), "right endhinge counts");
+    Rend_num_walks = (unsigned int**)mc_xcalloc(vec_length, sizeof(unsigned int*), "right endhinge walk counts");
+    Rend_start = (int****)mc_xcalloc(vec_length, sizeof(int***), "right endhinge starts");
+    Rend_end = (int****)mc_xcalloc(vec_length, sizeof(int***), "right endhinge ends");
+    Rend_walks = (int****)mc_xcalloc(vec_length, sizeof(int***), "right endhinge walks");
     
-    first_hinge_span = (struct hinge_span**)calloc(vec_length, sizeof(struct hinge_span*));
-    current_hinge_span = (struct hinge_span**)calloc(vec_length, sizeof(struct hinge_span*));
-    firstendhinge = (struct endhinge**)calloc(vec_length, sizeof(struct endhinge*));
-    currentendhinge = (struct endhinge**)calloc(vec_length, sizeof(struct endhinge*));
+    first_hinge_span = (struct hinge_span**)mc_xcalloc(vec_length, sizeof(struct hinge_span*), "first hinge span table");
+    current_hinge_span = (struct hinge_span**)mc_xcalloc(vec_length, sizeof(struct hinge_span*), "current hinge span table");
+    firstendhinge = (struct endhinge**)mc_xcalloc(vec_length, sizeof(struct endhinge*), "first endhinge table");
+    currentendhinge = (struct endhinge**)mc_xcalloc(vec_length, sizeof(struct endhinge*), "current endhinge table");
     
     curstart = allocate_2d_int(3, vM * vL);
     curend = allocate_2d_int(3, vM * vL);
