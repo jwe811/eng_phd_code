@@ -10,6 +10,7 @@ def process_file(src_path, dst_path, is_ham):
     
     # 2. Inject constants and dynamic CLI parser
     fixed_constants = """
+#include <stdlib.h>
 #include <getopt.h>
 
 extern int L;
@@ -34,6 +35,16 @@ extern double max_eval_LRvec(double fugacity);
 double *MC_L_Evector[2];
 double *MC_R_Evector[2];
 unsigned long int **MC_tspans_edges;
+
+static void *generated_xcalloc(size_t count, size_t size, const char *label)
+{
+    void *ptr = calloc(count, size);
+    if (ptr == NULL) {
+        fprintf(stderr, "Fatal: unable to allocate %s (%zu x %zu bytes)\\n", label, count, size);
+        exit(EXIT_FAILURE);
+    }
+    return ptr;
+}
 
 
 #define MAX_vM 5
@@ -72,6 +83,19 @@ unsigned long int **MC_tspans_edges;
     content = content.replace('struct endhinge* firstendhinge[MAX_KEYNUM_ARR+1];', 'struct endhinge **firstendhinge;')
     content = content.replace('struct endhinge* currentendhinge[MAX_KEYNUM_ARR+1];', 'struct endhinge **currentendhinge;')
     content = content.replace('struct endhinge *firstendhinge[MAX_KEYNUM_ARR+1], *currentendhinge[MAX_KEYNUM_ARR+1];', 'struct endhinge **firstendhinge, **currentendhinge;')
+    content = content.replace(
+        'struct endhinge *nextnewendhinge;\n\n\tnextnewendhinge =',
+        'struct endhinge *nextnewendhinge;\n\tunsigned int max_walks = numberofwalks > numberofwalks2 ? numberofwalks : numberofwalks2;\n\n\tnextnewendhinge =',
+    )
+    content = content.replace('nextnewendhinge->start2[i] = int_vecalloc(0,numberofwalks2-1);', 'nextnewendhinge->start2[i] = int_vecalloc(0,max_walks-1);')
+    content = content.replace('nextnewendhinge->end2[i] = int_vecalloc(0,numberofwalks2-1);', 'nextnewendhinge->end2[i] = int_vecalloc(0,max_walks-1);')
+    content = content.replace('nextnewendhinge->walks2[i] = int_vecalloc(0,numberofwalks-1);', 'nextnewendhinge->walks2[i] = int_vecalloc(0,max_walks-1);')
+    for table_name in ("Lend", "Rend"):
+        for suffix in ("", "2"):
+            content = content.replace(
+                f'(int*)malloc({table_name}_num_walks{suffix}[section_num][i] * sizeof(int))',
+                f'(int*)generated_xcalloc(MAX_vMvL + 1, sizeof(int), "{table_name} walk data{suffix}")',
+            )
 
     # 4. Topology Dispatcher
     # Replace the massive #if defined(CS) ... block at the end with a simple include to mc_deps_2sap.c
@@ -118,27 +142,43 @@ unsigned long int **MC_tspans_edges;
     content = content.replace('int main(void)', 'int main(int argc, char *argv[])')
     
     dynamic_allocs = cli_parser + """
-    first_hinge_span = (struct hinge_span**)malloc(sizeof(struct hinge_span*) * (max_sections + 1));
-    current_hinge_span = (struct hinge_span**)malloc(sizeof(struct hinge_span*) * (max_sections + 1));
-    firstendhinge = (struct endhinge**)malloc(sizeof(struct endhinge*) * (max_sections + 1));
-    currentendhinge = (struct endhinge**)malloc(sizeof(struct endhinge*) * (max_sections + 1));
-    MC_L_Evector[0] = (double*)calloc(max_keynum+1, sizeof(double));
-    MC_L_Evector[1] = (double*)calloc(max_keynum+1, sizeof(double));
-    MC_R_Evector[0] = (double*)calloc(max_keynum+1, sizeof(double));
-    MC_R_Evector[1] = (double*)calloc(max_keynum+1, sizeof(double));
-    MC_tspans_edges = (unsigned long int**)malloc(sizeof(unsigned long int*)*(max_keynum+1));
-    for(int k=1; k<=max_keynum; k++){
-        MC_tspans_edges[k] = unsgnlong_vecalloc(1, num_outsections[k]);
-        for(int m=1; m<=num_outsections[k]; m++) MC_tspans_edges[k][m] = 0;
-    }
+    first_hinge_span = (struct hinge_span**)generated_xcalloc(max_sections + 1, sizeof(struct hinge_span*), "first hinge span table");
+    current_hinge_span = (struct hinge_span**)generated_xcalloc(max_sections + 1, sizeof(struct hinge_span*), "current hinge span table");
+    firstendhinge = (struct endhinge**)generated_xcalloc(max_sections + 1, sizeof(struct endhinge*), "first endhinge table");
+    currentendhinge = (struct endhinge**)generated_xcalloc(max_sections + 1, sizeof(struct endhinge*), "current endhinge table");
+    MC_L_Evector[0] = (double*)generated_xcalloc(max_tspans+1, sizeof(double), "left eigenvector 0");
+    MC_L_Evector[1] = (double*)generated_xcalloc(max_tspans+1, sizeof(double), "left eigenvector 1");
+    MC_R_Evector[0] = (double*)generated_xcalloc(max_tspans+1, sizeof(double), "right eigenvector 0");
+    MC_R_Evector[1] = (double*)generated_xcalloc(max_tspans+1, sizeof(double), "right eigenvector 1");
+    MC_tspans_edges = (unsigned long int**)generated_xcalloc(max_keynum+1, sizeof(unsigned long int*), "2SAP edge table");
 """
     content = re.sub(r'int\s+main\s*\([^)]*\)\s*\{', 'int main(int argc, char *argv[])\n{\n' + dynamic_allocs.replace('\\', '\\\\'), content)
 
     evector_alloc = """
+    for(int k=1; k<=max_keynum; k++){
+        if(num_outsections[k] == 0) continue;
+        MC_tspans_edges[k] = unsgnlong_vecalloc(1, num_outsections[k]);
+        for(int m=1; m<=num_outsections[k]; m++) MC_tspans_edges[k][m] = 0;
+    }
     double calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;
-    double* R_Evector_ptr = R_Evector;
+    dom_evalue = calculated_dom_evalue;
 """
     content = content.replace('double* R_Evector;', 'double* R_Evector;\n' + evector_alloc)
+    content = re.sub(
+        r'\n\tR_Evector = \(double\*\)malloc\(sizeof\(double\)\*\(max_tspans\+1\)\);\n'
+        r'\tif\(R_Evector==NULL\)\{\n'
+        r'\t\tfprintf\(stderr, "Out of memory"\);\n'
+        r'\t\texit\(0\);\n'
+        r'\t\}\n'
+        r'.*?'
+        r'\tfor\(i=1; i<= max_tspans; i\+\+\)\{\n'
+        r'.*?'
+        r'\t\}\n',
+        '\n\tR_Evector = MC_R_Evector[0];\n',
+        content,
+        count=1,
+        flags=re.DOTALL,
+    )
 
     with open(dst_path, 'w') as f:
         f.write(content)

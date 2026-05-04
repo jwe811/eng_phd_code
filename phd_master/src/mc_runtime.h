@@ -1,7 +1,7 @@
 #ifndef MC_RUNTIME_H
 #define MC_RUNTIME_H
 
-static void *mc_xcalloc(size_t count, size_t size, const char *label)
+static inline void *mc_xcalloc(size_t count, size_t size, const char *label)
 {
 	void *ptr = calloc(count, size);
 	if (!ptr) {
@@ -11,7 +11,7 @@ static void *mc_xcalloc(size_t count, size_t size, const char *label)
 	return ptr;
 }
 
-static void *mc_xmalloc(size_t size, const char *label)
+static inline void *mc_xmalloc(size_t size, const char *label)
 {
 	void *ptr = malloc(size);
 	if (!ptr) {

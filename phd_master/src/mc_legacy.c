@@ -1,4 +1,48 @@
 #include "mc_globals.h"
+#include <errno.h>
+#include <stdarg.h>
+#include <sys/wait.h>
+
+static int checked_snprintf(char *buffer, size_t size, const char *fmt, ...)
+{
+	va_list args;
+	int written;
+
+	va_start(args, fmt);
+	written = vsnprintf(buffer, size, fmt, args);
+	va_end(args);
+
+	if (written < 0 || (size_t)written >= size) {
+		fprintf(stderr, "Formatted path exceeded its destination buffer.\n");
+		return 0;
+	}
+	return 1;
+}
+
+static int run_child(char *const argv[])
+{
+	pid_t child = fork();
+	if (child < 0) {
+		fprintf(stderr, "Failed to fork process: %s\n", strerror(errno));
+		return 1;
+	}
+	if (child == 0) {
+		execvp(argv[0], argv);
+		fprintf(stderr, "Failed to run %s: %s\n", argv[0], strerror(errno));
+		_exit(127);
+	}
+
+	int status = 0;
+	if (waitpid(child, &status, 0) < 0) {
+		fprintf(stderr, "Failed waiting for %s: %s\n", argv[0], strerror(errno));
+		return 1;
+	}
+	if (WIFEXITED(status)) return WEXITSTATUS(status);
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "%s exited from signal %d.\n", argv[0], WTERMSIG(status));
+	}
+	return 1;
+}
 
 static void rewrite_legacy_include(FILE *out, char *line)
 {
@@ -198,45 +242,31 @@ int run_legacy_2sap_sampler(void)
 	char mc_dir[1024];
 	char generated_src[1024];
 	char exe_path[1024];
-	char compile_cmd[4096];
-	char run_cmd[1024];
 
-	snprintf(data_dir, sizeof(data_dir), "%sdata", prefix);
-	snprintf(mc_dir, sizeof(mc_dir), "%ssrc/mc_output", prefix);
+	if (!checked_snprintf(data_dir, sizeof(data_dir), "%sdata", prefix)) return 1;
+	if (!checked_snprintf(mc_dir, sizeof(mc_dir), "%ssrc/mc_output", prefix)) return 1;
 	mkdir(data_dir, 0775);
-	snprintf(data_dir, sizeof(data_dir), "%sdata/2SAPs", prefix);
+	if (!checked_snprintf(data_dir, sizeof(data_dir), "%sdata/2SAPs", prefix)) return 1;
 	mkdir(data_dir, 0775);
-	snprintf(data_dir, sizeof(data_dir), "%sdata/Ham2SAPs", prefix);
+	if (!checked_snprintf(data_dir, sizeof(data_dir), "%sdata/Ham2SAPs", prefix)) return 1;
 	mkdir(data_dir, 0775);
 	mkdir(mc_dir, 0775);
-	if (strlen(mc_dir) + 64 >= sizeof(generated_src)) {
-		fprintf(stderr, "Generated source path is too long.\n");
-		return 1;
-	}
-	sprintf(generated_src, "%s/%s.generated.c", mc_dir, ham_mode ? "2SAP_MCsample_Ham" : "2SAP_MCsample");
+	if (!checked_snprintf(generated_src, sizeof(generated_src), "%s/%s.generated.c", mc_dir, ham_mode ? "2SAP_MCsample_Ham" : "2SAP_MCsample")) return 1;
 
 	if (!write_legacy_2sap_source(legacy_src, generated_src, prefix)) {
 		return 1;
 	}
 
-	if (strlen(mc_dir) + 64 >= sizeof(exe_path)) {
-		fprintf(stderr, "Generated sampler path is too long.\n");
-		return 1;
-	}
-	sprintf(exe_path, "%s/%s_L%dM%d", mc_dir, ham_mode ? "2sap_sampler_ham" : "2sap_sampler", L, M);
-	if (strlen(exe_path) + strlen(generated_src) + 32 >= sizeof(compile_cmd)) {
-		fprintf(stderr, "Generated compile command is too long.\n");
-		return 1;
-	}
-	sprintf(compile_cmd, "gcc -O3 -Wno-unused-result -o %s %s -lm", exe_path, generated_src);
-	printf("Compiling legacy %s2SAP sampler: %s\n", ham_mode ? "Hamiltonian " : "", compile_cmd);
-	if (system(compile_cmd) != 0) {
+	if (!checked_snprintf(exe_path, sizeof(exe_path), "%s/%s_L%dM%d", mc_dir, ham_mode ? "2sap_sampler_ham" : "2sap_sampler", L, M)) return 1;
+	char *compile_args[] = {"gcc", "-O3", "-Wno-unused-result", "-o", exe_path, generated_src, "-lm", NULL};
+	printf("Compiling legacy %s2SAP sampler: gcc -O3 -Wno-unused-result -o %s %s -lm\n", ham_mode ? "Hamiltonian " : "", exe_path, generated_src);
+	if (run_child(compile_args) != 0) {
 		fprintf(stderr, "Failed to compile generated 2SAP sampler.\n");
 		return 1;
 	}
 
-	snprintf(run_cmd, sizeof(run_cmd), "%s", exe_path);
 	printf("Running legacy %s2SAP sampler with L=%d M=%d span=%d samples=%d run=%d seed=%u\n",
 		ham_mode ? "Hamiltonian " : "", L, M, totalspan, samplesize, runnum, seednum);
-	return system(run_cmd) == 0 ? 0 : 1;
+	char *run_args[] = {exe_path, NULL};
+	return run_child(run_args);
 }
