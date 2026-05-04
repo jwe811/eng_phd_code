@@ -1,34 +1,27 @@
-# Data files (often very large)
-**/data/*.txt
-**/data/*.bin
-**/data/*.dat
-
-# Simulation outputs
-MCpolys*.txt
-MC2SAPs*.txt
-UofS*.txt
-**/data/SAPs/*.txt
-**/data/HamSAPs/*.txt
-**/data/2SAPs/*.txt
-**/data/Ham2SAPs/*.txt
-
-# Build artifacts
-*.o
-*.out
+# Object files and binaries
 build/
+bin/
+generated/
 
+# Data and results
+data/*.txt
+data/*.bin
+data/SAPs/
+data/HamSAPs/
+data/2SAPs/
+data/Ham2SAPs/
+data/TMresults/
 
-# Binaries
+# Python cache
+__pycache__/
+*.pyc
+
+# Local/IDE settings
+.vscode/
+.DS_Store
+
+# Root binaries (legacy location)
 tm_master
 mc_master
 mc_2sap
 mc_2sap_ham
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class

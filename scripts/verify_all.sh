@@ -29,7 +29,7 @@ for lattice in "2 1" "2 2" "3 1"; do
     
     for mode_name in "standard" "hamiltonian" "2sap" "2sap_ham"; do
         mode_id=${modes[$mode_name]}
-        output=$(./tm_master -L "$L" -M "$M" -m "$mode_id")
+        output=$(bin/tm_master -L "$L" -M "$M" -m "$mode_id")
         result=$(awk '/Connective Constant/ {print $4}' <<< "$output")
 
         if [[ -z "$result" ]]; then

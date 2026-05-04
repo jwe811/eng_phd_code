@@ -13,12 +13,12 @@ A high-performance, modernized Transfer Matrix (TM) engine combined with Monte C
 2.  **Run Transfer Matrix calculation** (e.g., 2x1 Hamiltonian mode):
     ```bash
     # runs transfer matrix cacluations in a 2x1 tube for Hamiltonian SAPs.
-    ./tm_master -L 2 -M 1 -m 1
+    bin/tm_master -L 2 -M 1 -m 1
     ```
 3.  **Run Monte Carlo sampler**:
     ```bash
     # samples 50 SAPs uniformly (w.r.t. span) in a 2x1 tube with a span of 5.
-    ./mc_master -L 2 -M 1 -m 0 -s 5 -n 50
+    bin/mc_master -L 2 -M 1 -m 0 -s 5 -n 50
     ```
 
 ## ⚙️ Configuration (CLI Flags)
@@ -94,26 +94,20 @@ The `scripts/audit_engine.py` script provides a rigorous validation suite that p
 ## 🛠 Project Structure
 
 ### Executables Built
-- **`tm_master`**: Transfer Matrix calculation engine (spectral solver for growth constants)
-- **`mc_master`**: Monte Carlo sampler for standard SAP and Hamiltonian mode configurations
-- **`mc_2sap`**: Specialized MC sampler for two-polymer systems (2SAP mode)
-- **`mc_2sap_ham`**: Specialized MC sampler for two-polymer Hamiltonian systems (2SAP-Ham mode)
+All executables are located in the `bin/` directory after building.
+- **`bin/tm_master`**: Transfer Matrix calculation engine (spectral solver for growth constants)
+- **`bin/mc_master`**: Monte Carlo sampler for standard SAP and Hamiltonian mode configurations
+- **`bin/mc_2sap`**: Specialized MC sampler for two-polymer systems (2SAP mode)
+- **`bin/mc_2sap_ham`**: Specialized MC sampler for two-polymer Hamiltonian systems (2SAP-Ham mode)
 
 ### Source Organization
-- `src/MASTER_TMcalc.c`: Core TM engine (state generation via FNV-1a hashing, CSR matrix construction, eigenvalue solver)
-- `src/MASTER_MCsample.c`: Monte Carlo master entry point and runtime configuration
-- `src/mc_builder.c`: Dynamic builder for MC sampler configurations
-- `src/mc_globals.c`, `src/mc_globals.h`: Shared MC state and parameters
-- `src/mc_validation.c`: Configuration validation and sanity checks
-- `src/mc_utils.c`: Utility functions (RNG, I/O, memory management)
-- `src/mc_memory.c`: Dynamic memory allocation for MC samplers
-- `src/mc_deps.c`: Unified dependencies for MC tools (topology, utilities)
-- `deps/topology/`: Connectivity validation routines (hinges, spanning walks)
-- `deps/utils/`: High-performance utilities (vector allocation, sorting, matrix operations)
-- `generated/`: Auto-generated MC sampler code (populated via `scripts/build_2sap_generic.py`)
-- `build/output/`: Build artifacts and generated executable templates
+- `src/`: Core source files (`.c`)
+- `include/`: Header files (`.h`)
+- `generated/`: Auto-generated MC sampler code
 - `deps/archive/`: Archived legacy dependencies and code versions
-- `scripts/audit_engine.py`: Python-based verification and audit suite
+- `bin/`: Compiled executables
+- `build/`: Intermediate object files
+- `scripts/`: Utility and build scripts
 - `data/`: Results directory (automatically created and cleaned via `make clean`)
 
 ## 🚀 Performance Features

@@ -37,9 +37,9 @@ void generate_evectors() {
 	// VERIFICATION: Check against archival file if it exists
 	char r_filename[100];
 	if (ham_check) {
-		checked_snprintf(r_filename, sizeof(r_filename), "data/R_EvectorHam_TS_L%dM%d.txt", L, M);
+		checked_snprintf(r_filename, sizeof(r_filename), "data/TMresults/R_EvectorHam_TS_L%dM%d.txt", L, M);
 	} else {
-		checked_snprintf(r_filename, sizeof(r_filename), "data/R_Evector_TS_L%dM%d.txt", L, M);
+		checked_snprintf(r_filename, sizeof(r_filename), "data/TMresults/R_Evector_TS_L%dM%d.txt", L, M);
 	}
 
 	FILE *r_fp = fopen(r_filename, "r");

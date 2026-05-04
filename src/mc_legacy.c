@@ -153,7 +153,7 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 		}
 
 		if (strstr(line, "sprintf(filename2, \"2SAP_R_Evector_TS_L%dM%d.txt\"") != NULL) {
-			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			fprintf(out, "\tsprintf(filename2, \"%sdata/TMresults/2SAP_R_Evector_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
 			continue;
 		}
 
@@ -179,7 +179,7 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 			continue;
 		}
 		if (strstr(line, "sprintf(filename2, \"2SAP_R_EvectorHam_TS_L%dM%d.txt\"") != NULL) {
-			fprintf(out, "\tsprintf(filename2, \"%sdata/2SAP_R_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
+			fprintf(out, "\tsprintf(filename2, \"%sdata/TMresults/2SAP_R_EvectorHam_TS_L%%dM%%d.txt\", L, M);\n", data_prefix);
 			continue;
 		}
 		if (strstr(line, "sprintf(filename, \"MC2SAPsL%dM%dspan%drun%dnum%lu.txt\"") != NULL) {

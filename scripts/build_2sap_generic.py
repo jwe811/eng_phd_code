@@ -111,6 +111,8 @@ static void *generated_xcalloc(size_t count, size_t size, const char *label)
         "ACTUAL 'VALID' SECTIONS FOR THE L=%d, M=%d COMPRESSED CASE IS: %d-%lu=%lu=%lu",
         "ACTUAL 'VALID' SECTIONS FOR THE L=%d, M=%d COMPRESSED CASE IS: %lu-%lu=%lu=%lu",
     )
+    content = content.replace('sprintf(filename2, "2SAP_R_Evector_TS_L%dM%d.txt", L, M);', 'sprintf(filename2, "data/TMresults/2SAP_R_Evector_TS_L%dM%d.txt", L, M);')
+    content = content.replace('sprintf(filename2, "2SAP_R_EvectorHam_TS_L%dM%d.txt", L, M);', 'sprintf(filename2, "data/TMresults/2SAP_R_EvectorHam_TS_L%dM%d.txt", L, M);')
 
     if is_ham:
         content += '\n#define tspans_nrr t_nrr\n#define tspans_edges MC_tspans_edges\n#define L_Evector MC_L_Evector\n#define R_Evector MC_R_Evector\n#define tspans_outsection t_outsection\n#include "../deps/archive/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"\n#undef tspans_nrr\n#undef tspans_edges\n#undef L_Evector\n#undef R_Evector\n#undef tspans_outsection\n'
