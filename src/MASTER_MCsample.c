@@ -60,6 +60,24 @@ void generate_evectors() {
 	} else {
 		printf("No archival file found for verification (%s). Proceeding with calculated values.\n", r_filename);
 	}
+
+	// EXPORT: Save calculated eigenvectors for later use/audit
+	ensure_directory("data/MC_Evectors");
+	char export_fn[100];
+	if (ham_check) {
+		checked_snprintf(export_fn, sizeof(export_fn), "data/MC_Evectors/R_EvectorHam_TS_L%dM%d.txt", L, M);
+	} else {
+		checked_snprintf(export_fn, sizeof(export_fn), "data/MC_Evectors/R_Evector_TS_L%dM%d.txt", L, M);
+	}
+	
+	FILE *export_fp = fopen(export_fn, "w");
+	if (export_fp != NULL) {
+		for (int i = 1; i <= (int)num_tspans; i++) {
+			fprintf(export_fp, "%.15f\n", R_Evector_solve[0][i]);
+		}
+		fclose(export_fp);
+		printf("Calculated eigenvectors exported to %s\n", export_fn);
+	}
 }
 
 void parse_args(int argc, char *argv[]) {

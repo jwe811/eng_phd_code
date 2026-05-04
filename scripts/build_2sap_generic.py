@@ -12,6 +12,9 @@ def process_file(src_path, dst_path, is_ham):
     fixed_constants = """
 #include <stdlib.h>
 #include <getopt.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
 
 extern int L;
 extern int M;
@@ -164,6 +167,18 @@ static void *generated_xcalloc(size_t count, size_t size, const char *label)
     }
     double calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;
     dom_evalue = calculated_dom_evalue;
+
+    mkdir("data/MC_Evectors", 0775);
+    char export_fn[128];
+    sprintf(export_fn, "data/MC_Evectors/2SAP_R_Evector%s_TS_L%dM%d.txt", (ham_check ? "Ham" : ""), L, M);
+    FILE *export_fp = fopen(export_fn, "w");
+    if (export_fp != NULL) {
+        for (int i = 1; i <= max_tspans; i++) {
+            fprintf(export_fp, "%.15f\\n", MC_R_Evector[0][i]);
+        }
+        fclose(export_fp);
+        printf("Calculated eigenvectors exported to %s\\n", export_fn);
+    }
 """
     content = content.replace('double* R_Evector;', 'double* R_Evector;\n' + evector_alloc)
     content = re.sub(

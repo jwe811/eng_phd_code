@@ -65,7 +65,7 @@ $(MC2SAP_HAM_OUT): $(GENDIR)/mc_2sap_ham.c $(SRCDIR)/mc_sysparams.c
 
 clean:
 	rm -rf $(BUILDDIR) $(BINDIR)
-	rm -rf data/TMresults
+	rm -rf data/TMresults data/MC_Evectors
 	rm -f data/*.txt data/*.bin
 
 test: directories $(TM_OUT)

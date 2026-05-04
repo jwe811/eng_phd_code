@@ -144,6 +144,7 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 		if (strstr(line, "#include \"../../include/marsaglia.h\"") != NULL) {
 			fputs(line, out);
 			fprintf(out, "\n");
+			fprintf(out, "#include <sys/stat.h>\n");
 			fprintf(out, "double *MC_L_Evector[2];\n");
 			fprintf(out, "double *MC_R_Evector[2];\n");
 			fprintf(out, "unsigned long int **MC_tspans_edges;\n");
@@ -174,6 +175,17 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 			fprintf(out, "\t}\n");
 			fprintf(out, "\tdouble calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;\n");
 			fprintf(out, "\tprintf(\"Calculated in-process TS eigenvalue=%%.15f (Expected: %%.15f)\\n\", calculated_dom_evalue, dom_evalue);\n");
+			fprintf(out, "\tmkdir(\"data/MC_Evectors\", 0775);\n");
+			fprintf(out, "\tchar export_fn[128];\n");
+			fprintf(out, "\tsprintf(export_fn, \"data/MC_Evectors/2SAP_R_Evector%s_TS_L%%dM%%d.txt\", L, M);\n", (strstr(src_path, "_Ham.c") != NULL ? "Ham" : ""));
+			fprintf(out, "\tFILE *export_fp = fopen(export_fn, \"w\");\n");
+			fprintf(out, "\tif (export_fp != NULL) {\n");
+			fprintf(out, "\t\tfor (int i = 1; i <= max_tspans; i++) {\n");
+			fprintf(out, "\t\t\tfprintf(export_fp, \"%%.15f\\n\", MC_R_Evector[0][i]);\n");
+			fprintf(out, "\t\t}\n");
+			fprintf(out, "\t\tfclose(export_fp);\n");
+			fprintf(out, "\t\tprintf(\"Calculated eigenvectors exported to %%s\\n\", export_fn);\n");
+			fprintf(out, "\t}\n");
 			fprintf(out, "\tdouble* R_Evector = MC_R_Evector[0];\n");
 			skip_evector_file_read = 1;
 			continue;

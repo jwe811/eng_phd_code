@@ -11,6 +11,7 @@ data/HamSAPs/
 data/2SAPs/
 data/Ham2SAPs/
 data/TMresults/
+data/MC_Evectors/
 
 # Python cache
 __pycache__/
