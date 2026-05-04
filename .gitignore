@@ -2,9 +2,6 @@
 **/data/*.txt
 **/data/*.bin
 **/data/*.dat
-phd_master/*_Evector*.txt
-phd_master/TMinfo*.txt
-phd_master/trace.txt
 
 # Simulation outputs
 MCpolys*.txt
@@ -15,22 +12,17 @@ UofS*.txt
 **/data/2SAPs/*.txt
 **/data/Ham2SAPs/*.txt
 
-# Binaries and Object files
+# Build artifacts
 *.o
 *.out
-src/MCsample.o
-src/MASTER_TMcalc.o
-phd_master/tm_master
-phd_master/mc_master
-phd_master/mc_2sap
-phd_master/mc_2sap_ham
-phd_master/generated/*.c
-phd_master/src/mc_2sap.c
-phd_master/src/mc_2sap_ham.c
-phd_master/src/mc_output/
-phd_master/tm_opt
-phd_master/tm_orig
-phd_master/tm_v9
+build/
+
+
+# Binaries
+tm_master
+mc_master
+mc_2sap
+mc_2sap_ham
 
 # OS files
 .DS_Store

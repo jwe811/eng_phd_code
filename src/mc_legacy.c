@@ -59,10 +59,10 @@ static void rewrite_legacy_include(FILE *out, char *line)
 		"../analysis/statistics/"
 	};
 	const char *prefixes[] = {
-		"../archive_deps/topology/",
-		"../archive_deps/sections/",
-		"../archive_deps/utils/",
-		"../archive_deps/analysis/statistics/"
+		"../../deps/archive/topology/",
+		"../../deps/archive/sections/",
+		"../../deps/archive/utils/",
+		"../../deps/archive/analysis/statistics/"
 	};
 	for (int i = 0; i < 4; i++) {
 		char *root = strstr(line, roots[i]);
@@ -78,7 +78,7 @@ static void rewrite_legacy_include(FILE *out, char *line)
 		char *name = strchr(line, '"') + 1;
 		char *end = strchr(name, '"');
 		if (end != NULL) *end = '\0';
-		fprintf(out, "#include \"../archive_deps/transfer_matrix/%s\"\n", name);
+		fprintf(out, "#include \"../../deps/archive/transfer_matrix/%s\"\n", name);
 		return;
 	}
 	fputs(line, out);
@@ -198,8 +198,7 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 			continue;
 		}
 		if (strstr(line, "#include \"Num_section_12V_endhinge_nonordered2.c\"") != NULL) {
-			fprintf(out, "#include \"../archive_deps/sections/Num_section_12V_endhinge_nonordered2.c\"\n");
-			continue;
+		fprintf(out, "#include \"../../deps/archive/sections/Num_section_12V_endhinge_nonordered2.c\"\n");
 		}
 
 		fputs(line, out);
@@ -211,9 +210,9 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 	fprintf(out, "#define tspans_nrr t_nrr\n");
 	fprintf(out, "#define tspans_edges MC_tspans_edges\n");
 	if (strstr(src_path, "_Ham.c") != NULL) {
-		fprintf(out, "#include \"../archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c\"\n");
+		fprintf(out, "#include \"../../deps/archive/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c\"\n");
 	} else {
-		fprintf(out, "#include \"../archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP.c\"\n");
+		fprintf(out, "#include \"../../deps/archive/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP.c\"\n");
 	}
 	fprintf(out, "#undef tspans_edges\n");
 	fprintf(out, "#undef tspans_nrr\n");
@@ -229,7 +228,7 @@ static int write_legacy_2sap_source(const char *src_path, const char *dst_path, 
 int run_legacy_2sap_sampler(void)
 {
 	int ham_mode = (mode == 3);
-	const char *legacy_src = ham_mode ? "src/archive_deps/monte_carlo/2SAP_MCsample_Ham.c" : "src/archive_deps/monte_carlo/2SAP_MCsample.c";
+	const char *legacy_src = ham_mode ? "deps/archive/monte_carlo/2SAP_MCsample_Ham.c" : "deps/archive/monte_carlo/2SAP_MCsample.c";
 	FILE *in = fopen(legacy_src, "r");
 	if (!in) {
 		fprintf(stderr, "Fatal: Could not open legacy source %s\n", legacy_src);
@@ -244,7 +243,7 @@ int run_legacy_2sap_sampler(void)
 	char exe_path[1024];
 
 	if (!checked_snprintf(data_dir, sizeof(data_dir), "%sdata", prefix)) return 1;
-	if (!checked_snprintf(mc_dir, sizeof(mc_dir), "%ssrc/mc_output", prefix)) return 1;
+	if (!checked_snprintf(mc_dir, sizeof(mc_dir), "%sbuild/output", prefix)) return 1;
 	mkdir(data_dir, 0775);
 	if (!checked_snprintf(data_dir, sizeof(data_dir), "%sdata/2SAPs", prefix)) return 1;
 	mkdir(data_dir, 0775);

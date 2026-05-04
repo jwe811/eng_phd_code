@@ -101,7 +101,7 @@ The `scripts/audit_engine.py` script provides a rigorous validation suite that p
 
 ### Source Organization
 - `src/MASTER_TMcalc.c`: Core TM engine (state generation via FNV-1a hashing, CSR matrix construction, eigenvalue solver)
-- `src/mc_master.c`: Monte Carlo master entry point and runtime configuration
+- `src/MASTER_MCsample.c`: Monte Carlo master entry point and runtime configuration
 - `src/mc_builder.c`: Dynamic builder for MC sampler configurations
 - `src/mc_globals.c`, `src/mc_globals.h`: Shared MC state and parameters
 - `src/mc_validation.c`: Configuration validation and sanity checks
@@ -111,6 +111,8 @@ The `scripts/audit_engine.py` script provides a rigorous validation suite that p
 - `deps/topology/`: Connectivity validation routines (hinges, spanning walks)
 - `deps/utils/`: High-performance utilities (vector allocation, sorting, matrix operations)
 - `generated/`: Auto-generated MC sampler code (populated via `scripts/build_2sap_generic.py`)
+- `build/output/`: Build artifacts and generated executable templates
+- `deps/archive/`: Archived legacy dependencies and code versions
 - `scripts/audit_engine.py`: Python-based verification and audit suite
 - `data/`: Results directory (automatically created and cleaned via `make clean`)
 

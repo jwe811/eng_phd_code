@@ -5351,7 +5351,7 @@ void printtofile(){
 #define L_Evector MC_L_Evector
 #define R_Evector MC_R_Evector
 #define tspans_outsection t_outsection
-#include "archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP.c"
+#include "../deps/archive/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP.c"
 #undef tspans_nrr
 #undef tspans_edges
 #undef L_Evector
