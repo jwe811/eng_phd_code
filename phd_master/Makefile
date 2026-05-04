@@ -1,5 +1,7 @@
 CC = gcc
-CFLAGS = -O3 -lm -fopenmp
+WARNFLAGS = -Wall -Wextra -Wformat=2 -Wno-sign-compare -Wno-shadow
+CFLAGS = -O3 $(WARNFLAGS) -lm -fopenmp
+GEN_CFLAGS = -O3 $(WARNFLAGS) -Wno-unused-variable -Wno-unused-parameter -Wno-unused-result -Wno-misleading-indentation -Isrc
 SRC = src/MASTER_TMcalc.c
 OUT = tm_master
 
@@ -14,27 +16,29 @@ tm: $(OUT)
 
 sampler: $(MC_OUT) mc_2sap mc_2sap_ham
 
-$(OUT): $(SRC)
+$(OUT): $(SRC) src/tm_runtime.h
 	$(CC) $(SRC) -o $(OUT) $(CFLAGS)
 
 $(MC_OUT): $(MC_SRC)
 	$(CC) $(MC_SRC) -o $(MC_OUT) $(CFLAGS)
 
-src/mc_2sap.c src/mc_2sap_ham.c: src/archive_deps/monte_carlo/2SAP_MCsample.c src/archive_deps/monte_carlo/2SAP_MCsample_Ham.c scripts/build_2sap_generic.py
+generated/mc_2sap.c generated/mc_2sap_ham.c: src/archive_deps/monte_carlo/2SAP_MCsample.c src/archive_deps/monte_carlo/2SAP_MCsample_Ham.c scripts/build_2sap_generic.py
 	python3 scripts/build_2sap_generic.py
 
-mc_2sap: src/mc_2sap.c src/mc_sysparams.c
-	$(CC) src/mc_2sap.c src/mc_sysparams.c -o mc_2sap -lm -w -O3
+mc_2sap: generated/mc_2sap.c src/mc_sysparams.c
+	$(CC) generated/mc_2sap.c src/mc_sysparams.c -o mc_2sap -lm $(GEN_CFLAGS)
 
-mc_2sap_ham: src/mc_2sap_ham.c src/mc_sysparams.c
-	$(CC) src/mc_2sap_ham.c src/mc_sysparams.c -o mc_2sap_ham -lm -w -O3
+mc_2sap_ham: generated/mc_2sap_ham.c src/mc_sysparams.c
+	$(CC) generated/mc_2sap_ham.c src/mc_sysparams.c -o mc_2sap_ham -lm $(GEN_CFLAGS)
 
 clean:
 	rm -f $(OUT) $(MC_OUT) mc_2sap mc_2sap_ham data/*.txt data/*.bin
-	rm -f $(OUT) $(MC_OUT) data/*.txt data/*.bin
 
-test: $(OUT)
+data:
+	mkdir -p data
+
+test: $(OUT) data
 	python3 audit_engine.py -L 1 -M 1 -m 0
 
-verify: $(OUT)
+verify: $(OUT) data
 	bash verify_all.sh

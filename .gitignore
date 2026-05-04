@@ -17,6 +17,7 @@ UofS*.txt
 src/MCsample.o
 src/MASTER_TMcalc.o
 phd_master/tm_master
+phd_master/generated/*.c
 phd_master/tm_opt
 phd_master/tm_orig
 phd_master/tm_v9

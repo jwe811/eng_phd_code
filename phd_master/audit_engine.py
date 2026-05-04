@@ -2,21 +2,43 @@ import struct
 import math
 import subprocess
 import re
+from pathlib import Path
 
 def read_csr(filename):
+    if not Path(filename).is_file():
+        raise FileNotFoundError(f"Missing CSR export: {filename}")
     with open(filename, "rb") as f:
         fmt_header = "QQ"
         header_size = struct.calcsize(fmt_header)
         header = f.read(header_size)
+        if len(header) != header_size:
+            raise ValueError(f"CSR file {filename} is too short to contain a header")
         n_states, n_transitions = struct.unpack(fmt_header, header)
-        row_ptr = list(struct.unpack("Q" * (n_states + 2), f.read(8 * (n_states + 2))))
-        out_states = list(struct.unpack("Q" * (n_transitions + 1), f.read(8 * (n_transitions + 1))))
-        edges = list(struct.unpack("Q" * (n_transitions + 1), f.read(8 * (n_transitions + 1))))
+        row_bytes = f.read(8 * (n_states + 2))
+        out_bytes = f.read(8 * (n_transitions + 1))
+        edge_bytes = f.read(8 * (n_transitions + 1))
+        if len(row_bytes) != 8 * (n_states + 2):
+            raise ValueError(f"CSR file {filename} has a truncated row pointer block")
+        if len(out_bytes) != 8 * (n_transitions + 1):
+            raise ValueError(f"CSR file {filename} has a truncated out-state block")
+        if len(edge_bytes) != 8 * (n_transitions + 1):
+            raise ValueError(f"CSR file {filename} has a truncated edge block")
+        row_ptr = list(struct.unpack("Q" * (n_states + 2), row_bytes))
+        out_states = list(struct.unpack("Q" * (n_transitions + 1), out_bytes))
+        edges = list(struct.unpack("Q" * (n_transitions + 1), edge_bytes))
     return n_states, row_ptr, out_states, edges
 
 def read_vector(filename):
+    if not Path(filename).is_file():
+        raise FileNotFoundError(f"Missing eigenvector export: {filename}")
     with open(filename, "r") as f:
         return [float(line.strip()) for line in f]
+
+def parse_metric(output, pattern, label):
+    match = re.search(pattern, output)
+    if not match:
+        raise RuntimeError(f"Could not parse {label} from tm_master output")
+    return float(match.group(1))
 
 def matvec(x, v, n_states, row_ptr, out_states, edges):
     res = [0.0] * n_states
@@ -104,13 +126,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     L, M, mode = args.L, args.M, args.mode
     
-    # Dynamically run tm_master and parse output
-    cmd = f"./tm_master -L {L} -M {M} -m {mode}"
-    print(f"Running Engine: {cmd}")
-    output = subprocess.check_output(cmd, shell=True).decode()
+    cmd = ["./tm_master", "-L", str(L), "-M", str(M), "-m", str(mode)]
+    print(f"Running Engine: {' '.join(cmd)}")
+    output = subprocess.check_output(cmd, text=True)
     
-    x0 = float(re.search(r"x_0\):\s+([\d\.]+)", output).group(1))
-    alpha = float(re.search(r"Alpha \(Amplitude\):\s+([\d\.e\-\+]+)", output).group(1))
-    beta = float(re.search(r"Beta \(Growth Parameter\):\s+([\d\.e\-\+]+)", output).group(1))
+    x0 = parse_metric(output, r"x_0\):\s+([\d\.]+)", "critical fugacity")
+    alpha = parse_metric(output, r"Alpha \(Amplitude\):\s+([\d\.e\-\+]+)", "alpha")
+    beta = parse_metric(output, r"Beta \(Growth Parameter\):\s+([\d\.e\-\+]+)", "beta")
     
     audit_full(L, M, mode, x0, alpha, beta)

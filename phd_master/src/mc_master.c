@@ -1,5 +1,28 @@
 #include "mc_globals.h"
 #include "../include/marsaglia.h"
+#include <errno.h>
+#include <stdarg.h>
+
+static void checked_snprintf(char *buffer, size_t size, const char *fmt, ...) {
+	va_list args;
+	int written;
+
+	va_start(args, fmt);
+	written = vsnprintf(buffer, size, fmt, args);
+	va_end(args);
+
+	if (written < 0 || (size_t)written >= size) {
+		fprintf(stderr, "Formatted path exceeded its destination buffer.\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void ensure_directory(const char *path) {
+	if (mkdir(path, 0775) != 0 && errno != EEXIST) {
+		fprintf(stderr, "Could not create directory '%s': %s\n", path, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+}
 
 void generate_evectors() {
 	printf("Starting integrated spectral solver...\n");
@@ -14,9 +37,9 @@ void generate_evectors() {
 	// VERIFICATION: Check against archival file if it exists
 	char r_filename[100];
 	if (ham_check) {
-		sprintf(r_filename, "data/R_EvectorHam_TS_L%dM%d.txt", L, M);
+		checked_snprintf(r_filename, sizeof(r_filename), "data/R_EvectorHam_TS_L%dM%d.txt", L, M);
 	} else {
-		sprintf(r_filename, "data/R_Evector_TS_L%dM%d.txt", L, M);
+		checked_snprintf(r_filename, sizeof(r_filename), "data/R_Evector_TS_L%dM%d.txt", L, M);
 	}
 
 	FILE *r_fp = fopen(r_filename, "r");
@@ -212,14 +235,16 @@ void run_rejection_sampler() {
 	printf("\nNOW SAMPLING: %d samples from L=%d, M=%d, span=%d%s\n", samplesize, L, M, totalspan, (ham_check ? " (Hamiltonian)" : ""));
 
 	const char *file_prefix = (ham_check) ? "MCpolysHam" : "MCpolys";
-	sprintf(filename, "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
+	ensure_directory("data");
+	ensure_directory(output_dir);
+	checked_snprintf(filename, sizeof(filename), "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
 	fp = fopen(filename, "w");
 
 	if(fp != NULL){
 		fprintf(fp, "UofS\n");
 		printf("printed UofS in file '%s'\n", filename);
 	} else {
-		printf("file pointer is pointing to NULL\n");
+		fprintf(stderr, "Could not open '%s' for writing: %s\n", filename, strerror(errno));
 		exit(1);
 	}
 

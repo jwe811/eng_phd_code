@@ -81,6 +81,10 @@ unsigned long int **MC_tspans_edges;
     content = content.replace('#include "../utils/', '#include "archive_deps/utils/')
     content = content.replace('#include "../analysis/', '#include "archive_deps/analysis/')
     content = content.replace('#include "../../include/marsaglia.h"', '#include "../include/marsaglia.h"')
+    content = content.replace(
+        "ACTUAL 'VALID' SECTIONS FOR THE L=%d, M=%d COMPRESSED CASE IS: %d-%lu=%lu=%lu",
+        "ACTUAL 'VALID' SECTIONS FOR THE L=%d, M=%d COMPRESSED CASE IS: %lu-%lu=%lu=%lu",
+    )
 
     if is_ham:
         content += '\n#define tspans_nrr t_nrr\n#define tspans_edges MC_tspans_edges\n#define L_Evector MC_L_Evector\n#define R_Evector MC_R_Evector\n#define tspans_outsection t_outsection\n#include "archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"\n#undef tspans_nrr\n#undef tspans_edges\n#undef L_Evector\n#undef R_Evector\n#undef tspans_outsection\n'
@@ -130,6 +134,6 @@ unsigned long int **MC_tspans_edges;
     with open(dst_path, 'w') as f:
         f.write(content)
 
-os.makedirs('scripts', exist_ok=True)
-process_file('src/archive_deps/monte_carlo/2SAP_MCsample.c', 'src/mc_2sap.c', False)
-process_file('src/archive_deps/monte_carlo/2SAP_MCsample_Ham.c', 'src/mc_2sap_ham.c', True)
+os.makedirs('generated', exist_ok=True)
+process_file('src/archive_deps/monte_carlo/2SAP_MCsample.c', 'generated/mc_2sap.c', False)
+process_file('src/archive_deps/monte_carlo/2SAP_MCsample_Ham.c', 'generated/mc_2sap_ham.c', True)
