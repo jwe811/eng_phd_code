@@ -75,7 +75,17 @@ for (k=1;k<=MAXIT_pw_method;k++){/*iterate the matrix multiplications a maximum 
 	}
 	if (L_lambda_0 == 0.0) L_lambda_0 = 1.0;
 	if (R_lambda_0 == 0.0) R_lambda_0 = 1.0;
-	for (i=1;i<=max_tspans;i++) { L_Evector[1][i] /= L_lambda_0; R_Evector[1][i] /= R_lambda_0; }
+	for (i=1;i<=max_tspans;i++) { 
+		double nL = L_Evector[1][i] / L_lambda_0;
+		double nR = R_Evector[1][i] / R_lambda_0;
+		if (ham_check) {
+			L_Evector[1][i] = 0.5 * L_Evector[0][i] + 0.5 * nL;
+			R_Evector[1][i] = 0.5 * R_Evector[0][i] + 0.5 * nR;
+		} else {
+			L_Evector[1][i] = nL;
+			R_Evector[1][i] = nR;
+		}
+	}
 	/* "normalize" the eigenvectors */
 
 
@@ -119,7 +129,17 @@ for (k=1;k<=MAXIT_pw_method;k++){/*iterate the matrix multiplications a maximum 
 	}
 	if (L_lambda_1 == 0.0) L_lambda_1 = 1.0;
 	if (R_lambda_1 == 0.0) R_lambda_1 = 1.0;
-	for (i=1;i<=max_tspans;i++) { L_Evector[0][i] /= L_lambda_1; R_Evector[0][i] /= R_lambda_1; }
+	for (i=1;i<=max_tspans;i++) { 
+		double nL = L_Evector[0][i] / L_lambda_1;
+		double nR = R_Evector[0][i] / R_lambda_1;
+		if (ham_check) {
+			L_Evector[0][i] = 0.5 * L_Evector[1][i] + 0.5 * nL;
+			R_Evector[0][i] = 0.5 * R_Evector[1][i] + 0.5 * nR;
+		} else {
+			L_Evector[0][i] = nL;
+			R_Evector[0][i] = nR;
+		}
+	}
 	/* "normalize" the eigenvectors */
 
 /**/

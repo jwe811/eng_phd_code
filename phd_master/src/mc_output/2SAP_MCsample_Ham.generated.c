@@ -28,10 +28,10 @@ double max_eval_LRvec(double fugacity);
 /** START OF DEFINITIONS THAT CHANGE DEPENDING ON SYSTEM BEING STUDIED **/
 //for now, need L,M>0, totalspan>0,
 
-#define	L 3
-#define	M 1
+#define	L 2
+#define	M 2
 #define	totalspan 5
-#define	samplesize 5
+#define	samplesize 3
 #define	runnum 1
 #define	seednum 227001
 
@@ -5660,7 +5660,7 @@ void printtofile(){
 
 
 #if defined(CS)
-#include "../../../phd_archive/src/topology/LFlag_0.c"
+#include "../archive_deps/topology/LFlag_0.c"
 /* This function takes an arguement (*pointordNum)[3] */
 /* it returns 1 if the two-span being considered connects to phi on the left and returns 0 otherwise */
 /* it also uses the global variable ordertemplate */
@@ -5670,17 +5670,17 @@ void printtofile(){
 /* it returns 1 if the two-span being considered connects to phi on the right and returns 0 otherwise */
 /* it also uses the global variable ordertemplate */
 
-#include "../../../phd_archive/src/utils/noncrossing.c"
+#include "../archive_deps/utils/noncrossing.c"
 /* This function takes arguements (int side, int a, int b, int c, int d) */
 /* and returns 1 if the walk connecting a and b does not cross */
 /* the walk connecting c and d it returns 0 otherwise*/
-#include "../../../phd_archive/src/sections/cstatenum.c"
+#include "../archive_deps/sections/cstatenum.c"
 #else
-#include "../../../phd_archive/src/topology/LFlag_norder2.c"
+#include "../archive_deps/topology/LFlag_norder2.c"
 /* This function takes an arguement (*pointordNum)[3] */
 /* it returns 1 if the two-span being considered connects to phi on the left and returns 0 otherwise */
 /* it also uses the global variable ordertemplate */
-#include "../../../phd_archive/src/topology/LFlag_endhinge_norder2.c"
+#include "../archive_deps/topology/LFlag_endhinge_norder2.c"
 
 //#include "../topology/RFlag.c"		/* include if M <> 0 */
 /* This function takes an arguement (*pointordNum)[3] */
@@ -5688,49 +5688,49 @@ void printtofile(){
 /* it also uses the global variable ordertemplate */
 
 #if vM*vL<7
-#include "../../../phd_archive/src/sections/Num_section_6V.c"
+#include "../archive_deps/sections/Num_section_6V.c"
 /* This function takes the arguement (int side) and assigns a unique number */
 /* to the section on side = side */
-#include "../../../phd_archive/src/sections/Num_section_6V_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_6V_nonordered2.c"
-#include "../../../phd_archive/src/sections/Num_section_6V_endhinge_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_6V_endhinge_nonordered2.c"
+#include "../archive_deps/sections/Num_section_6V_nonordered.c"
+#include "../archive_deps/sections/Num_section_6V_nonordered2.c"
+#include "../archive_deps/sections/Num_section_6V_endhinge_nonordered.c"
+#include "../archive_deps/sections/Num_section_6V_endhinge_nonordered2.c"
 #elif vM*vL<9
-#include "../../../phd_archive/src/sections/Num_section_8V.c"
-#include "../../../phd_archive/src/sections/Num_section_8V_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_8V_nonordered2.c"
-#include "../../../phd_archive/src/sections/Num_section_8V_endhinge_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_8V_endhinge_nonordered2.c"
+#include "../archive_deps/sections/Num_section_8V.c"
+#include "../archive_deps/sections/Num_section_8V_nonordered.c"
+#include "../archive_deps/sections/Num_section_8V_nonordered2.c"
+#include "../archive_deps/sections/Num_section_8V_endhinge_nonordered.c"
+#include "../archive_deps/sections/Num_section_8V_endhinge_nonordered2.c"
 #elif vM*vL<11
-#include "../../../phd_archive/src/sections/Num_section_10V.c"
-#include "../../../phd_archive/src/sections/Num_section_10V_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_10V_nonordered2.c"
-#include "../../../phd_archive/src/sections/Num_section_10V_endhinge_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_10V_endhinge_nonordered2.c"
+#include "../archive_deps/sections/Num_section_10V.c"
+#include "../archive_deps/sections/Num_section_10V_nonordered.c"
+#include "../archive_deps/sections/Num_section_10V_nonordered2.c"
+#include "../archive_deps/sections/Num_section_10V_endhinge_nonordered.c"
+#include "../archive_deps/sections/Num_section_10V_endhinge_nonordered2.c"
 #elif vM*vL<13
-#include "../../../phd_archive/src/sections/Num_section_12V.c"
-#include "../../../phd_archive/src/sections/Num_section_12V_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_12V_nonordered2.c"
-#include "../../../phd_archive/src/sections/Num_section_12V_endhinge_nonordered.c"
-#include "../../../phd_archive/src/sections/Num_section_12V_endhinge_nonordered2.c"
+#include "../archive_deps/sections/Num_section_12V.c"
+#include "../archive_deps/sections/Num_section_12V_nonordered.c"
+#include "../archive_deps/sections/Num_section_12V_nonordered2.c"
+#include "../archive_deps/sections/Num_section_12V_endhinge_nonordered.c"
+#include "../archive_deps/sections/Num_section_12V_endhinge_nonordered2.c"
 #endif
 
 #endif
 
 
 
-#include "../../../phd_archive/src/sections/printsection.c"
+#include "../archive_deps/sections/printsection.c"
 
-#include "../../../phd_archive/src/utils/int_vecalloc.c"
-#include "../../../phd_archive/src/utils/unsgn_vecalloc.c"
+#include "../archive_deps/utils/int_vecalloc.c"
+#include "../archive_deps/utils/unsgn_vecalloc.c"
 
-#include "../../../phd_archive/src/utils/unsgnlong_vecalloc.c"
+#include "../archive_deps/utils/unsgnlong_vecalloc.c"
 /* used for dynamically allocating memory for vectors with unsigned long integer enteries */
 
-#include "../../../phd_archive/src/utils/vecalloc.c"
+#include "../archive_deps/utils/vecalloc.c"
 /* used for dynamically allocating memory for vectors with enteries of type vec_ent */
 
-#include "../../../phd_archive/src/utils/matalloc.c"
+#include "../archive_deps/utils/matalloc.c"
 /* used for dynamically allocating memory for matrices with enteries of type mat_ent */
 
 
@@ -5753,7 +5753,7 @@ void printtofile(){
 #define tspans_outsection t_outsection
 #define tspans_nrr t_nrr
 #define tspans_edges MC_tspans_edges
-#include "../../../phd_archive/src/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"
+#include "../archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"
 #undef tspans_edges
 #undef tspans_nrr
 #undef tspans_outsection

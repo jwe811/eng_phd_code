@@ -3,7 +3,7 @@ CFLAGS = -O3 -lm -fopenmp
 SRC = src/MASTER_TMcalc.c
 OUT = tm_master
 
-MC_SRC = src/MASTER_MCsample.c
+MC_SRC = src/mc_master.c src/mc_globals.c src/mc_legacy.c src/mc_builder.c src/mc_utils.c src/mc_memory.c src/mc_validation.c src/mc_deps.c
 MC_OUT = mc_master
 
 .PHONY: all clean tm sampler test verify
