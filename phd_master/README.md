@@ -1,6 +1,8 @@
-# Master TMcalc Research Engine
+# Researching SAPs and 2SAPs in Lattice Tubes via Transfer Matrix Methods
 
-A high-performance, modernized Transfer Matrix (TM) engine combined with Monte Carlo sampling tools for calculating the Connective Constant and topological statistics of self-avoiding polygons (SAPs) and multi-polymer systems in arbitrary $L \times M$ lattice tubes.
+A high-performance, modernized Transfer Matrix (TM) engine combined with Monte Carlo sampling tools for calculating the Connective Constant and topological statistics of self-avoiding polygons (SAPs) and systems with two SAPs (2SAPs) in arbitrary $L \times M$ lattice tubes.
+
+[Click here](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496) to access my Ph.D. dissertation.
 
 ## 🚀 Quick Start
 
@@ -10,15 +12,13 @@ A high-performance, modernized Transfer Matrix (TM) engine combined with Monte C
     ```
 2.  **Run Transfer Matrix calculation** (e.g., 2x1 Hamiltonian mode):
     ```bash
+    # runs transfer matrix cacluations in a 2x1 tube for Hamiltonian SAPs.
     ./tm_master -L 2 -M 1 -m 1
     ```
 3.  **Run Monte Carlo sampler**:
     ```bash
-    ./mc_master -L 2 -M 1 -m 1
-    ```
-4.  **Run the Audit Suite**:
-    ```bash
-    python3 audit_engine.py
+    # samples 50 SAPs uniformly (w.r.t. span) in a 2x1 tube with a span of 5.
+    ./mc_master -L 2 -M 1 -m 0 -s 5 -n 50
     ```
 
 ## ⚙️ Configuration (CLI Flags)
