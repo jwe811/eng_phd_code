@@ -11,70 +11,63 @@
 
 //sample 2SAPs will go to files: MC2SAPsHamL%dM%dspan%dnum%d.txt
 
-#include <stdio.h>		/* Standard input/output		*/
-#include <stdlib.h>		/* Need Ascii to integer function	*/
-#include <time.h>		/* Used to time the program		*/
-#include <math.h>		/* Standard math functions (i.e. pow)	*/
-#include <sys/time.h>
-#include "../../include/marsaglia.h"
+#include <stdio.h>
+
+#include <getopt.h>
+
+extern int L;
+extern int M;
+extern int totalspan;
+extern int samplesize;
+extern int runnum;
+extern unsigned int seednum;
+extern int maxpolys;
+
+extern int max_sections;
+extern int max_tspans;
+extern unsigned long int max_keynum;
+extern double dom_evalue;
+extern double fval;
+
+extern void set_system_params();
+extern double max_eval_LRvec(double fugacity);
 
 double *MC_L_Evector[2];
 double *MC_R_Evector[2];
 unsigned long int **MC_tspans_edges;
-double fval = 0.0;
-double max_eval_LRvec(double fugacity);
+
+
+#define MAX_vM 5
+#define MAX_vL 5
+#define MAX_vMvL 25
+#define MAX_SPAN 20
+#define MAX_KEYNUM_ARR 140000
+
+#define vM (M+1)
+#define vL (L+1)
+		/* Standard input/output		*/
+#include <stdlib.h>		/* Need Ascii to integer function	*/
+#include <time.h>		/* Used to time the program		*/
+#include <math.h>		/* Standard math functions (i.e. pow)	*/
+#include <sys/time.h>
+#include "../include/marsaglia.h"
 
 
 /** START OF DEFINITIONS THAT CHANGE DEPENDING ON SYSTEM BEING STUDIED **/
 //for now, need L,M>0, totalspan>0,
 
-#define	L 2
-#define	M 1
-#define	totalspan 5
-#define	samplesize 100
-#define	runnum 1
-#define	seednum 227001
+				// number of horizontal edges
+				// number of vertical edges
+		// span of sampled SAPs
+	// number of samples desired
 
-#define	maxpolys 10000
+
+
+	// number of 2SAPs per file.
 
 /** END OF DEFINITIONS THAT CHANGE DEPENDING ON SYSTEM BEING STUDIED **/
 
-//Automatically set max_sections, based on previous runs.
-#if M==1 && L==1
-#define max_sections 8
 
-#elif M==1 && L==2
-#define max_sections 73
-#define max_keynum 152
-#define max_tspans 490
-#define dom_evalue 5.534148126030995
-
-#elif M==1 && L==3
-#define max_sections 742
-#define max_keynum 4048
-#define max_tspans 37454
-#define dom_evalue 24.378235811209002
-
-#elif M==1 && L==4
-#define max_sections 9309
-#define max_keynum 108386
-#define max_tspans 2598620
-#define dom_evalue 97.848097677835298
-
-#elif M==1 && L==5
-#define max_sections 138038
-
-#elif M==2 && L==2
-#define max_sections 2619
-#define max_keynum 21540
-#define max_tspans 495792
-#define dom_evalue 53.686533141903084
-
-#elif M==2 && L==3
-#define max_sections 138322
-#endif
-
-#define	vec_length	(max_sections+1)
 #define	vM	(M+1)				/* number of vertices in vertical direction   = M + 1      */
 #define	vL	(L+1)				/* number of vertices in horizontal direction = L + 1      */
 
@@ -100,7 +93,7 @@ struct hinge_span {	/* This data structure is used to store information about tw
 	unsigned long int 	outorder;		// section num of righthand section of poly1
 	unsigned long int	outorder2;	// section num of righthand section of poly2
 
-	unsigned int		hedges[vM*vL];	//contains info about which hinge-edges are filled
+	unsigned int		hedges[MAX_vMvL];	//contains info about which hinge-edges are filled
 
 	int		*start[3];	//start[0][i] contains the starting x-coordinate of the i'th walk.
 						//start[1][i] contains the starting y-coordinate of the i'th walk.
@@ -108,17 +101,17 @@ struct hinge_span {	/* This data structure is used to store information about tw
 	int		*end[3];		//end[0][i] contains the ending x-coordinate of the i'th walk.
 						//end[1][i] contains the ending y-coordinate of the i'th walk.
 						//end[2][i] contains the ending z-coordinate of the i'th walk.
-	int		*walks[vM*vL+1];	//walks[j][i] contains the j'th step in the i'th walk.	rest zero's.
+	int		*walks[MAX_vMvL+1];	//walks[j][i] contains the j'th step in the i'th walk.	rest zero's.
 	unsigned int	num_of_walks;	//number of walks in this 2-span.
 
 	int		*start2[3];	//same but for 2nd poly
 	int		*end2[3];		//same but for 2nd poly
-	int		*walks2[vM*vL+1];	//same but for 2nd poly
+	int		*walks2[MAX_vMvL+1];	//same but for 2nd poly
 	unsigned int	num_of_walks2;	//same but for 2nd poly
 
 	struct hinge_span	*nexthinge;	// pointer to another hinge_span data structure
 
-}	*first_hinge_span[vec_length], *current_hinge_span[vec_length]; /* these are global */
+} **first_hinge_span, **current_hinge_span; /* these are global */
 
 	/* first_hinge_span is an array of pointers to hinge_span data structures where each pointer	*/
 	/* in the array points to the first element of a linked list of hinge_span data structures	*/
@@ -130,7 +123,7 @@ struct hinge_span {	/* This data structure is used to store information about tw
 
 struct endhinge {
 	unsigned long int	sec2;			//section number of poly2
-	unsigned int		hedges[vM*vL];	//contains info about which hinge-edges are filled
+	unsigned int		hedges[MAX_vMvL];	//contains info about which hinge-edges are filled
 	unsigned short int	side;		//0 if a left endhinge, 1 if a right endhinge
 
 	int		*start[3];	//start[0][i] contains the starting x-coordinate of the i'th walk.
@@ -139,21 +132,21 @@ struct endhinge {
 	int		*end[3];		//end[0][i] contains the ending x-coordinate of the i'th walk.
 						//end[1][i] contains the ending y-coordinate of the i'th walk.
 						//end[2][i] contains the ending z-coordinate of the i'th walk.
-	int		*walks[vM*vL+1];	//walks[j][i] contains the j'th step in the i'th walk.	rest zero's.
+	int		*walks[MAX_vMvL+1];	//walks[j][i] contains the j'th step in the i'th walk.	rest zero's.
 	unsigned int	num_of_walks;	//number of walks in this endhinge
 
 	int		*start2[3];		//same but for 2nd poly
 	int		*end2[3];			//same but for 2nd poly
-	int		*walks2[vM*vL+1];	//same but for 2nd poly
+	int		*walks2[MAX_vMvL+1];	//same but for 2nd poly
 	unsigned int	num_of_walks2;	//same but for 2nd poly
 
 	struct endhinge* nextendhinge;// pointer to the next endhinge structure in the linked list
 };
 
-struct endhinge* firstendhinge[vec_length];		/* Array of pointers to endhinge structures, where each	*/
+struct endhinge **firstendhinge;		/* Array of pointers to endhinge structures, where each	*/
 										/* pointer in the array points to the first element in		*/
 										/* the linked list of endhinge structures				*/
-struct endhinge* currentendhinge[vec_length];	/* Array of dummy pointers that are used to traverse		*/
+struct endhinge **currentendhinge;	/* Array of dummy pointers that are used to traverse		*/
 										/* the endhinge linked lists.							*/
 
 
@@ -167,7 +160,7 @@ struct endhinge* currentendhinge[vec_length];	/* Array of dummy pointers that ar
 /*************** Global variables used in this program *********************/
 /***************************************************************************/
 
-unsigned int		ordertemplate[2][vM][vL];	/* The first index is for side (left = 0 ; right = 1) */
+unsigned int		ordertemplate[2][MAX_vM][MAX_vL];	/* The first index is for side (left = 0 ; right = 1) */
 										/* the second index is for the location of the vertex from the top */
 										/* the third index is for the location of the vertex from the left */
 										/* This global array is used as a "template" to store information  */
@@ -177,7 +170,7 @@ unsigned int		ordertemplate[2][vM][vL];	/* The first index is for side (left = 0
 										/* the potential two spans are built up algorithmically by the     */
 										/* program. The stored numbers represent the order in which the    */
 										/* edge is traversed when the two span is part of a polygonal walk */
-unsigned int		ordertemplate2[2][vM][vL]; //same but for 2nd poly
+unsigned int		ordertemplate2[2][MAX_vM][MAX_vL]; //same but for 2nd poly
 
 unsigned long int 	num_2_spans = 1;	/* This variable keeps track of the total number of potential two spans   */
 
@@ -185,16 +178,16 @@ unsigned long int	valid_2_spans = 0;	/* This is used to count the number of two 
 
 ////////////////////// arrays which hold the tspan info ////////////////////////////////
 
-unsigned long int	num_outsections[max_keynum+1];	/* For a given section (which has a number section_num assigned to it)*/
+unsigned long int	num_outsections[MAX_KEYNUM_ARR+1];	/* For a given section (which has a number section_num assigned to it)*/
 										/* num_outsections[section_num] is the number of two spans with this  */
 										/* section as a first section                                         */
  
-unsigned long int	*t_outsection[max_keynum+1];	/* An array of pointers to integers 					*/
+unsigned long int	*t_outsection[MAX_KEYNUM_ARR+1];	/* An array of pointers to integers 					*/
 										/* records the "outsection" of the two-span				*/
 										/* t_outsection[insection][nth_tspan]				*/
 										/* nth_tspan = nth two-span with firstsection = insection	*/
 
-unsigned long int	*t_nrr[max_keynum+1];		/*An array of pointers to integers*/
+unsigned long int	*t_nrr[MAX_KEYNUM_ARR+1];		/*An array of pointers to integers*/
 										/*records the tspan "number"      */
 										/* defined by the array index */
 										/*example:		*/
@@ -203,76 +196,76 @@ unsigned long int	*t_nrr[max_keynum+1];		/*An array of pointers to integers*/
 										/* and the second section is the first such */
 										/* section which connects with first section = 1 */
 
-unsigned int		*t_num_walks[max_keynum+1];	//t_num_walks[insection][nth_tspan] holds the number of walks in this tspan
+unsigned int		*t_num_walks[MAX_KEYNUM_ARR+1];	//t_num_walks[insection][nth_tspan] holds the number of walks in this tspan
 
-int				***t_start[max_keynum+1];	//t_start[insection][nth_tspan][i][nth_walk] holds the i-coordinate (0=x, 1=y, 2=z) of the start point of the nth_walk
+int				***t_start[MAX_KEYNUM_ARR+1];	//t_start[insection][nth_tspan][i][nth_walk] holds the i-coordinate (0=x, 1=y, 2=z) of the start point of the nth_walk
 
-int				***t_end[max_keynum+1];		//t_end[insection][nth_tspan][i][nth_walk] holds the i-coordinate (0=x, 1=y, 2=z) of the end point of the nth_walk
+int				***t_end[MAX_KEYNUM_ARR+1];		//t_end[insection][nth_tspan][i][nth_walk] holds the i-coordinate (0=x, 1=y, 2=z) of the end point of the nth_walk
 
-int				***t_walks[max_keynum+1];	//t_end[insection][nth_tspan][direc][nth_walk] holds the "direc'th" direction the nth_walk
+int				***t_walks[MAX_KEYNUM_ARR+1];	//t_end[insection][nth_tspan][direc][nth_walk] holds the "direc'th" direction the nth_walk
 
-unsigned int		*t_num_walks2[max_keynum+1];	//same but for poly2
-int				***t_start2[max_keynum+1];	//same but for poly2
-int				***t_end2[max_keynum+1];		//same but for poly2
-int				***t_walks2[max_keynum+1];	//same but for poly2
+unsigned int		*t_num_walks2[MAX_KEYNUM_ARR+1];	//same but for poly2
+int				***t_start2[MAX_KEYNUM_ARR+1];	//same but for poly2
+int				***t_end2[MAX_KEYNUM_ARR+1];		//same but for poly2
+int				***t_walks2[MAX_KEYNUM_ARR+1];	//same but for poly2
 
 
 
 ////////////////////// arrays which hold the endhinge info ////////////////////////////////////
 
-unsigned long int	num_left_endhinges[max_keynum+1];
-unsigned int		*Lend_num_walks[max_keynum+1];
-int				***Lend_start[max_keynum+1];
-int				***Lend_end[max_keynum+1];
-int				***Lend_walks[max_keynum+1];
+unsigned long int	num_left_endhinges[MAX_KEYNUM_ARR+1];
+unsigned int		*Lend_num_walks[MAX_KEYNUM_ARR+1];
+int				***Lend_start[MAX_KEYNUM_ARR+1];
+int				***Lend_end[MAX_KEYNUM_ARR+1];
+int				***Lend_walks[MAX_KEYNUM_ARR+1];
 
-unsigned int		*Lend_num_walks2[max_keynum+1];
-int				***Lend_start2[max_keynum+1];
-int				***Lend_end2[max_keynum+1];
-int				***Lend_walks2[max_keynum+1];
+unsigned int		*Lend_num_walks2[MAX_KEYNUM_ARR+1];
+int				***Lend_start2[MAX_KEYNUM_ARR+1];
+int				***Lend_end2[MAX_KEYNUM_ARR+1];
+int				***Lend_walks2[MAX_KEYNUM_ARR+1];
 
 
 
-unsigned long int	num_right_endhinges[max_keynum+1];
-unsigned int		*Rend_num_walks[max_keynum+1];
-int				***Rend_start[max_keynum+1];
-int				***Rend_end[max_keynum+1];
-int				***Rend_walks[max_keynum+1];
+unsigned long int	num_right_endhinges[MAX_KEYNUM_ARR+1];
+unsigned int		*Rend_num_walks[MAX_KEYNUM_ARR+1];
+int				***Rend_start[MAX_KEYNUM_ARR+1];
+int				***Rend_end[MAX_KEYNUM_ARR+1];
+int				***Rend_walks[MAX_KEYNUM_ARR+1];
 
-unsigned int		*Rend_num_walks2[max_keynum+1];
-int				***Rend_start2[max_keynum+1];
-int				***Rend_end2[max_keynum+1];
-int				***Rend_walks2[max_keynum+1];
+unsigned int		*Rend_num_walks2[MAX_KEYNUM_ARR+1];
+int				***Rend_start2[MAX_KEYNUM_ARR+1];
+int				***Rend_end2[MAX_KEYNUM_ARR+1];
+int				***Rend_walks2[MAX_KEYNUM_ARR+1];
 
 
 
 ////////////////
 
-unsigned int reordertemplate[2][vM][vL];	//holds the re-ordered ordertemplate to reduce number of unique sections.
-unsigned int reordertemplate2[2][vM][vL];	//same but for poly2
+unsigned int reordertemplate[2][MAX_vM][MAX_vL];	//holds the re-ordered ordertemplate to reduce number of unique sections.
+unsigned int reordertemplate2[2][MAX_vM][MAX_vL];	//same but for poly2
 
-unsigned short int hingestatus[vM][vL];		//keeps track of which vertices in the hinge are occupied. 0=empty, 1=filled.
-unsigned short int alreadyentered[vM][vL];	//keeps track of where we've already initially entered. 0=no, 1=yes.
-unsigned short int alreadyentered2[vM][vL];	//same but for poly2
+unsigned short int hingestatus[MAX_vM][MAX_vL];		//keeps track of which vertices in the hinge are occupied. 0=empty, 1=filled.
+unsigned short int alreadyentered[MAX_vM][MAX_vL];	//keeps track of where we've already initially entered. 0=no, 1=yes.
+unsigned short int alreadyentered2[MAX_vM][MAX_vL];	//same but for poly2
 
-unsigned short int colhingeedges[M][vL]; //keeps track of which column (i/M) edges in the hinge are occupied. 0=empty, 1=filled.
-unsigned short int rowhingeedges[vM][vL]; //keeps track of which row (j/L) edges in the hinge are occupied. 0=empty, 1=filled.
+unsigned short int colhingeedges[MAX_vM][MAX_vL]; //keeps track of which column (i/M) edges in the hinge are occupied. 0=empty, 1=filled.
+unsigned short int rowhingeedges[MAX_vM][MAX_vL]; //keeps track of which row (j/L) edges in the hinge are occupied. 0=empty, 1=filled.
 
-unsigned long int sectionkey[vec_length];	//will hold valid (re-ordered) section nums. index is the key num
+unsigned long int sectionkey[MAX_KEYNUM_ARR+1];	//will hold valid (re-ordered) section nums. index is the key num
 									//note: sectionkey[0] is garbage. Key numbers start at 1.
 
-unsigned long int sectionkey2SAP[max_keynum+1][2];
+unsigned long int sectionkey2SAP[MAX_KEYNUM_ARR+1][2];
 
 unsigned long int dupcounter=0;	//will count the number of duplicate 2-spans created and not stored.
 
-int curstart[3][vM*vL];		//will hold the start-points of the walks being built
-int curend[3][vM*vL];		//will hold the end-points of the walks being built
-int curwalks[vM*vL+1][vM*vL];	//will hold the walks as they are being built.
+int curstart[3][MAX_vMvL];		//will hold the start-points of the walks being built
+int curend[3][MAX_vMvL];		//will hold the end-points of the walks being built
+int curwalks[MAX_vMvL+1][MAX_vMvL];	//will hold the walks as they are being built.
 						//curwalks[j][i] contains the j'th step in the i'th walk.	rest zero's.
 
-int curstart2[3][vM*vL];			//same but for poly2
-int curend2[3][vM*vL];			//same but for poly2
-int curwalks2[vM*vL+1][vM*vL];	//same but for poly2
+int curstart2[3][MAX_vMvL];			//same but for poly2
+int curend2[3][MAX_vMvL];			//same but for poly2
+int curwalks2[MAX_vMvL+1][MAX_vMvL];	//same but for poly2
 
 unsigned int num_walks=0;	//number of walks in the 2-span
 unsigned int num_walks2=0;	//same but for poly2
@@ -281,15 +274,15 @@ unsigned int num_walks2=0;	//same but for poly2
 int EndOrdNum[2];		//contains info on # of edges in left section and endhinge
 int EndOrdNum2[2];		//contains info on # of edges in left section and endhinge
 
-int endtemplate[vM][vL];		//contains the section associated with the end hinge
-int rendtemplate[vM][vL];	//holds the re-ordered endtemplate to reduce number of unique sections.
-int endtemplate2[vM][vL];
-int rendtemplate2[vM][vL];
+int endtemplate[MAX_vM][MAX_vL];		//contains the section associated with the end hinge
+int rendtemplate[MAX_vM][MAX_vL];	//holds the re-ordered endtemplate to reduce number of unique sections.
+int endtemplate2[MAX_vM][MAX_vL];
+int rendtemplate2[MAX_vM][MAX_vL];
 
-int endtemplate3[vM][vL];	//same but for 2nd poly
-int rendtemplate3[vM][vL];
-int endtemplate4[vM][vL];
-int rendtemplate4[vM][vL];
+int endtemplate3[MAX_vM][MAX_vL];	//same but for 2nd poly
+int rendtemplate3[MAX_vM][MAX_vL];
+int endtemplate4[MAX_vM][MAX_vL];
+int rendtemplate4[MAX_vM][MAX_vL];
 
 unsigned long int tot_right_endhinges=0;
 unsigned long int tot_left_endhinges=0;
@@ -305,15 +298,15 @@ unsigned long int num_nonlexi_endhinges=0;
 
 
 //integer division rounds down in case of vM*vL is odd
-int built_walks_start[vM*vL/2][3];
-int built_walks_end[vM*vL/2][3];
-int built_walks_direcs[vM*vL/2][vM*vL*(totalspan+1)];
+int built_walks_start[MAX_vMvL/2][3];
+int built_walks_end[MAX_vMvL/2][3];
+int built_walks_direcs[MAX_vMvL/2][MAX_vMvL*(MAX_SPAN+1)];
 
 int num_built_walks;
 
-int built_walks_start2[vM*vL/2][3];	//2nd poly
-int built_walks_end2[vM*vL/2][3];	//2nd poly
-int built_walks_direcs2[vM*vL/2][vM*vL*(totalspan+1)];	//2nd poly
+int built_walks_start2[MAX_vMvL/2][3];	//2nd poly
+int built_walks_end2[MAX_vMvL/2][3];	//2nd poly
+int built_walks_direcs2[MAX_vMvL/2][MAX_vMvL*(MAX_SPAN+1)];	//2nd poly
 
 int num_built_walks2;	//2nd poly
 
@@ -322,10 +315,10 @@ FILE*			fp;			//file pointer. will point to the file that is to be written to.
 unsigned long int filetotal=0;	//number of polys in the file 
 unsigned long int filenum=1;		//number of polygon files created.
 
-unsigned short int testvector[max_keynum+1];	//this will be the vector corresponding to the testsection.
-unsigned short int temptestvector[max_keynum+1];	//used for the vector-matrix multiplication
-unsigned short int testvector2[max_keynum+1];	//this will be the vector corresponding to the testsection.
-unsigned short int temptestvector2[max_keynum+1];	//used for the vector-matrix multiplication
+unsigned short int testvector[MAX_KEYNUM_ARR+1];	//this will be the vector corresponding to the testsection.
+unsigned short int temptestvector[MAX_KEYNUM_ARR+1];	//used for the vector-matrix multiplication
+unsigned short int testvector2[MAX_KEYNUM_ARR+1];	//this will be the vector corresponding to the testsection.
+unsigned short int temptestvector2[MAX_KEYNUM_ARR+1];	//used for the vector-matrix multiplication
 
 
 
@@ -438,7 +431,36 @@ void printtofile();
 /***************************************************************************/
 
 
-int main(void) {
+int main(int argc, char *argv[])
+{
+
+    int opt;
+    while ((opt = getopt(argc, argv, "L:M:s:n:r:S:")) != -1) {
+        switch (opt) {
+            case 'L': L = atoi(optarg); break;
+            case 'M': M = atoi(optarg); break;
+            case 's': totalspan = atoi(optarg); break;
+            case 'n': samplesize = atoi(optarg); break;
+            case 'r': runnum = atoi(optarg); break;
+            case 'S': seednum = (unsigned int)atoi(optarg); break;
+        }
+    }
+    set_system_params();
+    
+    first_hinge_span = (struct hinge_span**)malloc(sizeof(struct hinge_span*) * (max_sections + 1));
+    current_hinge_span = (struct hinge_span**)malloc(sizeof(struct hinge_span*) * (max_sections + 1));
+    firstendhinge = (struct endhinge**)malloc(sizeof(struct endhinge*) * (max_sections + 1));
+    currentendhinge = (struct endhinge**)malloc(sizeof(struct endhinge*) * (max_sections + 1));
+    MC_L_Evector[0] = (double*)calloc(max_tspans+1, sizeof(double));
+    MC_L_Evector[1] = (double*)calloc(max_tspans+1, sizeof(double));
+    MC_R_Evector[0] = (double*)calloc(max_tspans+1, sizeof(double));
+    MC_R_Evector[1] = (double*)calloc(max_tspans+1, sizeof(double));
+    MC_tspans_edges = (unsigned long int**)malloc(sizeof(unsigned long int*)*(max_keynum+1));
+    for(int k=1; k<=max_keynum; k++){
+        MC_tspans_edges[k] = unsgnlong_vecalloc(1, num_outsections[k]);
+        for(int m=1; m<=num_outsections[k]; m++) MC_tspans_edges[k][m] = 0;
+    }
+
 
 	unsigned int seed=seednum;
 	initran_(&seed);
@@ -751,7 +773,7 @@ int main(void) {
 
 
 	unsigned long int testsection=1;	//section that is going to be "tested" to see if it eventually can connect to all other sections
-//	unsigned long int testvector[vec_length];	//this will be the vector corresponding to the testsection. had to make this global for some reason.
+//	unsigned long int testvector[MAX_KEYNUM_ARR+1];	//this will be the vector corresponding to the testsection. had to make this global for some reason.
 
 	printf("\nSection that is being tested to see if it connects to all other sections is section=%lu\n\n", testsection);
 	printf("It consists of sections %lu and %lu\n", sectionkey2SAP[testsection][0], sectionkey2SAP[testsection][1]);
@@ -768,7 +790,7 @@ int main(void) {
 
 
 
-//	unsigned long int temptestvector[vec_length];	//used for the vector-matrix multiplication. had to make this global for some reason
+//	unsigned long int temptestvector[MAX_KEYNUM_ARR+1];	//used for the vector-matrix multiplication. had to make this global for some reason
 
 
 
@@ -841,8 +863,8 @@ int main(void) {
 
 	unsigned long int numnoconnect=0;	//this will count the number of non-connected sections (to the testsection)
 	unsigned long int numconnect=0;	//this will count the number of connected sections (to the testsection)
-	static unsigned long int nonconnectingsections[max_keynum];	//this will hold the section numbers which DONT connect to testsection
-	static unsigned long int connectingsections[max_keynum];		//this will hold the section numbers which DO connect to testsection
+	static unsigned long int nonconnectingsections[MAX_KEYNUM_ARR];	//this will hold the section numbers which DONT connect to testsection
+	static unsigned long int connectingsections[MAX_KEYNUM_ARR];		//this will hold the section numbers which DO connect to testsection
 	//initialize these vectors to all zeros
 	for(i=0; i<=max_keynum-1; i++){
 		nonconnectingsections[i] = 0;
@@ -1044,7 +1066,7 @@ int main(void) {
 	printf("\nNOW SAMPLING 2SAPs: %d samples from L=%d, M=%d, span=%d\n", samplesize, L, M, totalspan);
 
 
-		sprintf(filename, "data/Ham2SAPs/MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, filenum);
+	sprintf(filename, "MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, filenum);
 	fp = fopen(filename, "w");	//create or overwrite the file "filename"
 
 	if(fp != NULL){
@@ -1083,23 +1105,25 @@ int main(void) {
 
 //	static double R_Evector[max_tspans+1];
 
-	MC_L_Evector[0] = (double*)malloc(sizeof(double)*(max_tspans+1));
-	MC_L_Evector[1] = (double*)malloc(sizeof(double)*(max_tspans+1));
-	MC_R_Evector[0] = (double*)malloc(sizeof(double)*(max_tspans+1));
-	MC_R_Evector[1] = (double*)malloc(sizeof(double)*(max_tspans+1));
-	if(MC_L_Evector[0]==NULL || MC_L_Evector[1]==NULL || MC_R_Evector[0]==NULL || MC_R_Evector[1]==NULL){
+	double* R_Evector;
+
+    double calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;
+    double* R_Evector_ptr = R_Evector;
+
+	R_Evector = (double*)malloc(sizeof(double)*(max_tspans+1));
+	if(R_Evector==NULL){
 		fprintf(stderr, "Out of memory");
 		exit(0);
 	}
-	MC_tspans_edges = (unsigned long int**)malloc(sizeof(unsigned long int*)*(max_keynum+1));
-	if(MC_tspans_edges==NULL){ fprintf(stderr, "Out of memory"); exit(0); }
-	for(i=1; i<=max_keynum; i++){
-		MC_tspans_edges[i] = unsgnlong_vecalloc(1, num_outsections[i]);
-		for(j=1; j<=num_outsections[i]; j++) MC_tspans_edges[i][j] = 0;
+
+
+	char filename2[100];		//this will hold the filename of the text file that we will read from
+	sprintf(filename2, "2SAP_R_EvectorHam_TS_L%dM%d.txt", L, M);
+	FILE* fp2 = fopen(filename2, "r");
+	for(i=1; i<= max_tspans; i++){
+		fscanf(fp2, "%lf\n", &R_Evector[i]);
 	}
-	double calculated_dom_evalue = max_eval_LRvec(1.0) + 1.0;
-	printf("Calculated in-process TS eigenvalue=%.15f (Expected: %.15f)\n", calculated_dom_evalue, dom_evalue);
-	double* R_Evector = MC_R_Evector[0];
+
 /*
 	sumofprobs=0.0;
 	//check transition probabilities
@@ -1487,7 +1511,7 @@ void conv_to_array(void)
 	unsigned long int section_num;
 	unsigned long int sec1key;
 	unsigned long int sec2key;
-	unsigned int curArrayEnt[max_keynum+1];
+	unsigned int curArrayEnt[MAX_KEYNUM_ARR+1];
 	for(i=1; i<=max_keynum; i++){
 		curArrayEnt[i]=1;
 	}
@@ -2032,8 +2056,8 @@ void conv_endhinges_to_array(void)
 
 
 	///Fill L/Rend_start, L/Rend_end, L/Rend_walks
-	unsigned int L_curArrayEnt[max_keynum+1];
-	unsigned int R_curArrayEnt[max_keynum+1];
+	unsigned int L_curArrayEnt[MAX_KEYNUM_ARR+1];
+	unsigned int R_curArrayEnt[MAX_KEYNUM_ARR+1];
 	for(i=1; i<=max_keynum; i++){
 		L_curArrayEnt[i]=1;
 		R_curArrayEnt[i]=1;
@@ -2828,7 +2852,7 @@ recordtemplate( int (*pointordNum)[6])
 //	printf("NEWoutNum2=%d\n", outNum2);
 
 
-	int temp_hedges[vM*vL];
+	int temp_hedges[MAX_vMvL];
 	int index=0;
 	int edgenum=1;
 
@@ -3450,7 +3474,7 @@ recordendtemplate()
 
 
 
-	int temp_hedges[vM*vL];
+	int temp_hedges[MAX_vMvL];
 	int index=0;
 	int edgenum=1;
 
@@ -4560,7 +4584,7 @@ void add_to_built_walks(unsigned long int secnum, int nth_tspan){
 	int i,j;
 
 	int walknum;
-	int walktoadd[vM*vL+1];
+	int walktoadd[MAX_vMvL+1];
 	int walktoadd_start[3];
 	int walktoadd_end[3];
 
@@ -4702,7 +4726,7 @@ void add_to_built_walks(unsigned long int secnum, int nth_tspan){
 			int b=-1;
 			int newwalk_start[3];
 			int newwalk_end[3];
-			int newwalk[vM*vL*(totalspan+1)];
+			int newwalk[MAX_vMvL*(MAX_SPAN+1)];
 
 			//find a and b.
 			for(built_walknum=0; built_walknum<=num_built_walks-1; built_walknum++){
@@ -4998,7 +5022,7 @@ printf(". Newwalk End: (%d, %d, %d,)\n", newwalk_end[0], newwalk_end[1], newwalk
 			int b=-1;
 			int newwalk_start[3];
 			int newwalk_end[3];
-			int newwalk[vM*vL*(totalspan+1)];
+			int newwalk[MAX_vMvL*(MAX_SPAN+1)];
 
 			//find a and b.
 			for(built_walknum=0; built_walknum<=num_built_walks2-1; built_walknum++){
@@ -5178,7 +5202,7 @@ void add_right_endhinge(unsigned long int secnum, int nth_endhinge){
 	int i,j;
 
 	int walknum;
-	int walktoadd[vM*vL+1];
+	int walktoadd[MAX_vMvL+1];
 	int walktoadd_start[3];
 	int walktoadd_end[3];
 
@@ -5189,7 +5213,7 @@ void add_right_endhinge(unsigned long int secnum, int nth_endhinge){
 	int b=-1;
 	int newwalk_start[3];
 	int newwalk_end[3];
-	int newwalk[vM*vL*(totalspan+1)];
+	int newwalk[MAX_vMvL*(MAX_SPAN+1)];
 
 	for(i=0; i<=vM*vL*(totalspan+1)-1; i++){
 		newwalk[i]=0;
@@ -5624,7 +5648,7 @@ void printtofile(){
 		fprintf(fp, "-999\n");
 		fclose(fp);
 		filenum++;
-		sprintf(filename, "data/Ham2SAPs/MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, filenum);
+		sprintf(filename, "MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, filenum);
 		fp = fopen(filename, "w");	//create or overwrite the file "filename
 
 		if(fp != NULL){
@@ -5659,78 +5683,7 @@ void printtofile(){
 
 
 
-#if defined(CS)
-#include "../archive_deps/topology/LFlag_0.c"
-/* This function takes an arguement (*pointordNum)[3] */
-/* it returns 1 if the two-span being considered connects to phi on the left and returns 0 otherwise */
-/* it also uses the global variable ordertemplate */
-
-//#include "../topology/RFlag_0.c"		/* include if M = 0  */
-/* This function takes an arguement (*pointordNum)[3] */
-/* it returns 1 if the two-span being considered connects to phi on the right and returns 0 otherwise */
-/* it also uses the global variable ordertemplate */
-
-#include "../archive_deps/utils/noncrossing.c"
-/* This function takes arguements (int side, int a, int b, int c, int d) */
-/* and returns 1 if the walk connecting a and b does not cross */
-/* the walk connecting c and d it returns 0 otherwise*/
-#include "../archive_deps/sections/cstatenum.c"
-#else
-#include "../archive_deps/topology/LFlag_norder2.c"
-/* This function takes an arguement (*pointordNum)[3] */
-/* it returns 1 if the two-span being considered connects to phi on the left and returns 0 otherwise */
-/* it also uses the global variable ordertemplate */
-#include "../archive_deps/topology/LFlag_endhinge_norder2.c"
-
-//#include "../topology/RFlag.c"		/* include if M <> 0 */
-/* This function takes an arguement (*pointordNum)[3] */
-/* it returns 1 if the two-span being considered connects to phi on the right and returns 0 otherwise */
-/* it also uses the global variable ordertemplate */
-
-#if vM*vL<7
-#include "../archive_deps/sections/Num_section_6V.c"
-/* This function takes the arguement (int side) and assigns a unique number */
-/* to the section on side = side */
-#include "../archive_deps/sections/Num_section_6V_nonordered.c"
-#include "../archive_deps/sections/Num_section_6V_nonordered2.c"
-#include "../archive_deps/sections/Num_section_6V_endhinge_nonordered.c"
-#include "../archive_deps/sections/Num_section_6V_endhinge_nonordered2.c"
-#elif vM*vL<9
-#include "../archive_deps/sections/Num_section_8V.c"
-#include "../archive_deps/sections/Num_section_8V_nonordered.c"
-#include "../archive_deps/sections/Num_section_8V_nonordered2.c"
-#include "../archive_deps/sections/Num_section_8V_endhinge_nonordered.c"
-#include "../archive_deps/sections/Num_section_8V_endhinge_nonordered2.c"
-#elif vM*vL<11
-#include "../archive_deps/sections/Num_section_10V.c"
-#include "../archive_deps/sections/Num_section_10V_nonordered.c"
-#include "../archive_deps/sections/Num_section_10V_nonordered2.c"
-#include "../archive_deps/sections/Num_section_10V_endhinge_nonordered.c"
-#include "../archive_deps/sections/Num_section_10V_endhinge_nonordered2.c"
-#elif vM*vL<13
-#include "../archive_deps/sections/Num_section_12V.c"
-#include "../archive_deps/sections/Num_section_12V_nonordered.c"
-#include "../archive_deps/sections/Num_section_12V_nonordered2.c"
-#include "../archive_deps/sections/Num_section_12V_endhinge_nonordered.c"
-#include "../archive_deps/sections/Num_section_12V_endhinge_nonordered2.c"
-#endif
-
-#endif
-
-
-
-#include "../archive_deps/sections/printsection.c"
-
-#include "../archive_deps/utils/int_vecalloc.c"
-#include "../archive_deps/utils/unsgn_vecalloc.c"
-
-#include "../archive_deps/utils/unsgnlong_vecalloc.c"
-/* used for dynamically allocating memory for vectors with unsigned long integer enteries */
-
-#include "../archive_deps/utils/vecalloc.c"
-/* used for dynamically allocating memory for vectors with enteries of type vec_ent */
-
-#include "../archive_deps/utils/matalloc.c"
+#include "mc_deps_2sap.c"		/*mat_ent **matalloc(int rowlow, int rowhigh, int collow, int colhigh)*/
 /* used for dynamically allocating memory for matrices with enteries of type mat_ent */
 
 
@@ -5748,14 +5701,14 @@ void printtofile(){
 
 
 
+#define tspans_nrr t_nrr
+#define tspans_edges MC_tspans_edges
 #define L_Evector MC_L_Evector
 #define R_Evector MC_R_Evector
 #define tspans_outsection t_outsection
-#define tspans_nrr t_nrr
-#define tspans_edges MC_tspans_edges
-#include "../archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"
-#undef tspans_edges
+#include "archive_deps/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"
 #undef tspans_nrr
-#undef tspans_outsection
+#undef tspans_edges
 #undef L_Evector
 #undef R_Evector
+#undef tspans_outsection

@@ -26,6 +26,7 @@ extern int samplesize;
 extern int runnum;
 extern unsigned int seednum;
 extern int max_sections;
+extern unsigned long int max_keynum;
 extern int max_tspans;
 extern double dom_evalue;
 extern int maxpolys;

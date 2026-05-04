@@ -27,9 +27,9 @@ double max_eval_LRvec(double fugacity);
 //for now, need L,M>0, totalspan>0,
 
 #define	L 2
-#define	M 2
+#define	M 1
 #define	totalspan 5
-#define	samplesize 1
+#define	samplesize 100
 #define	runnum 1
 #define	seednum 227001
 
