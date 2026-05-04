@@ -41,7 +41,7 @@ data:
 	mkdir -p data
 
 test: $(OUT) data
-	python3 audit_engine.py -L 1 -M 1 -m 0
+	python3 scripts/audit_engine.py -L 1 -M 1 -m 0
 
 verify: $(OUT) data
-	bash verify_all.sh
+	bash scripts/verify_all.sh

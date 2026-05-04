@@ -57,7 +57,7 @@ make                   # Build all: tm_master, mc_master, mc_2sap, mc_2sap_ham
 make tm                # Build only tm_master
 make sampler           # Build all MC samplers: mc_master, mc_2sap, mc_2sap_ham
 make test              # Run quick test suite (tm_master on 1x1, mode 0)
-make verify            # Run full verification suite (bash verify_all.sh)
+make verify            # Run full verification suite (bash scripts/verify_all.sh)
 make clean             # Remove all executables and data/ contents
 ```
 
@@ -86,7 +86,7 @@ The MC sampling tools (`mc_master`, `mc_2sap`, `mc_2sap_ham`) export sampled con
 
 ## 🛡️ Verification & Auditing
 
-The `audit_engine.py` script provides a rigorous validation suite that performs:
+The `scripts/audit_engine.py` script provides a rigorous validation suite that performs:
 1.  **Spectral Residue Check**: Validates the dominant eigenvector against the exported CSR matrix.
 2.  **Analytical Alignment**: Compares code-calculated growth parameters (Alpha/Beta) against authoritative thesis specifications.
 3.  **Pole Residue Convergence**: Verifies numerical stability and residue limits.
@@ -111,7 +111,7 @@ The `audit_engine.py` script provides a rigorous validation suite that performs:
 - `deps/topology/`: Connectivity validation routines (hinges, spanning walks)
 - `deps/utils/`: High-performance utilities (vector allocation, sorting, matrix operations)
 - `generated/`: Auto-generated MC sampler code (populated via `scripts/build_2sap_generic.py`)
-- `audit_engine.py`: Python-based verification and audit suite
+- `scripts/audit_engine.py`: Python-based verification and audit suite
 - `data/`: Results directory (automatically created and cleaned via `make clean`)
 
 ## 🚀 Performance Features
