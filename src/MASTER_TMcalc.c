@@ -18,6 +18,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include <sys/stat.h>
+#include "tm_spectral.h"
 
 /* Forward Declarations */
 struct hinge_span;
@@ -64,6 +65,9 @@ unsigned long int *num_outsections = NULL;
 unsigned long int *csr_out_states = NULL;
 unsigned long int *csr_edges = NULL;
 unsigned long int *csr_row_ptr = NULL;
+TmSpectralProblem spectral_problem;
+unsigned int *section_template_scratch = NULL;
+size_t section_template_len = 0;
 
 #define MAX_HEDGE ( (lat_M+1)*lat_L + lat_M*(lat_L+1) + 1 )
 
@@ -80,6 +84,7 @@ struct hinge_span {
     unsigned long int outorder2;
     unsigned int edgecount;
     unsigned int edgecount2;
+    unsigned long int hedge_hash;
     unsigned int *hedges;
     struct hinge_span *nexthinge;
 };
@@ -127,20 +132,44 @@ unsigned long int actual_max_states = 0;
 #include "../deps/topology/LFlag_norder2.c"
 #pragma GCC diagnostic pop
 
+static unsigned long int hash_template_entry(unsigned long int hash, unsigned int value)
+{
+    hash ^= value;
+    hash *= 1099511628211ULL;
+    return hash;
+}
+
 /* Universal Pattern Hasher (FNV-1a) */
 unsigned long int get_section_hash(int poly, int side) {
     unsigned long int h = 14695981039346656037ULL;
     for(int i=0; i<=lat_M; i++) {
         for(int j=0; j<=lat_L; j++) {
-            h ^= reordertemplate_master[poly][side][i][j];
-            h *= 1099511628211ULL;
+            h = hash_template_entry(h, reordertemplate_master[poly][side][i][j]);
         }
     }
     return h;
 }
 
-unsigned long int get_section_num(int poly, int side) {
-    return get_section_hash(poly, side);
+static unsigned long int copy_and_hash_section_template(int poly, int side, unsigned int *dest) {
+    unsigned long int h = 14695981039346656037ULL;
+    size_t idx = 0;
+    for (int i = 0; i <= lat_M; i++) {
+        for (int j = 0; j <= lat_L; j++) {
+            unsigned int value = reordertemplate_master[poly][side][i][j];
+            dest[idx++] = value;
+            h = hash_template_entry(h, value);
+        }
+    }
+    return h;
+}
+
+static unsigned long int get_or_add_current_section(int poly, int side) {
+    unsigned long int section_num;
+    unsigned long int section_hash;
+
+    section_hash = copy_and_hash_section_template(poly, side, section_template_scratch);
+    section_num = get_or_add_section(section_hash, section_template_scratch, section_template_len);
+    return section_num;
 }
 
 #define QM lat_M
@@ -193,14 +222,14 @@ void fillreordertemplate(int poly, int ledges, int redges) {
 }
 
 void recordtemplate(int (*pON)[]) {
-    unsigned long int inNum = get_or_add_section(get_section_num(0, 0));
-    unsigned long int outNum = get_or_add_section(get_section_num(0, 1));
+    unsigned long int inNum = get_or_add_current_section(0, 0);
+    unsigned long int outNum = get_or_add_current_section(0, 1);
     int i, j;
 
     unsigned long int inNum2=0, outNum2=0;
     if (num_polys == 2) {
-        inNum2 = get_or_add_section(get_section_num(1, 0));
-        outNum2 = get_or_add_section(get_section_num(1, 1));
+        inNum2 = get_or_add_current_section(1, 0);
+        outNum2 = get_or_add_current_section(1, 1);
     }
 
     int *pON_raw = (int*)pON;
@@ -210,15 +239,33 @@ void recordtemplate(int (*pON)[]) {
     unsigned int temp_hedges[MAX_HEDGE];
     for(i=0; i<MAX_HEDGE; i++) temp_hedges[i]=0;
     int idx=0, edgenum=1;
-    for(i=0; i<=lat_M; i++) for(j=0; j<lat_L; j++) { if(rowhingeedges[i][j]) temp_hedges[idx]=edgenum; idx++; edgenum++; }
-    for(i=0; i<lat_M; i++) for(j=0; j<=lat_L; j++) { if(colhingeedges[i][j]) temp_hedges[idx]=edgenum; idx++; edgenum++; }
+    for(i=0; i<=lat_M; i++) for(j=0; j<lat_L; j++) {
+        if (idx >= MAX_HEDGE) {
+            fprintf(stderr, "Fatal: hinge edge list overflow while recording template for L=%d M=%d\n", lat_L, lat_M);
+            exit(EXIT_FAILURE);
+        }
+        if(rowhingeedges[i][j]) temp_hedges[idx]=edgenum;
+        idx++;
+        edgenum++;
+    }
+    for(i=0; i<lat_M; i++) for(j=0; j<=lat_L; j++) {
+        if (idx >= MAX_HEDGE) {
+            fprintf(stderr, "Fatal: hinge edge list overflow while recording template for L=%d M=%d\n", lat_L, lat_M);
+            exit(EXIT_FAILURE);
+        }
+        if(colhingeedges[i][j]) temp_hedges[idx]=edgenum;
+        idx++;
+        edgenum++;
+    }
+    unsigned long int hedge_hash = 14695981039346656037ULL;
+    for(i=0; i<MAX_HEDGE; i++) hedge_hash = hash_template_entry(hedge_hash, temp_hedges[i]);
 
     int duplicate=0;
     struct hinge_span* test = first_hinge_span[inNum];
     while(test->nexthinge != NULL) {
         test = test->nexthinge;
         if(test->outorder==outNum && test->inorder2==inNum2 && test->outorder2==outNum2) {
-            if(test->edgecount==n_edges && test->edgecount2==n_edges2) {
+            if(test->edgecount==n_edges && test->edgecount2==n_edges2 && test->hedge_hash==hedge_hash) {
                 int match=1;
                 for(i=0; i<MAX_HEDGE; i++) if(temp_hedges[i]!=test->hedges[i]) { match=0; break; }
                 if(match) { duplicate=1; dupcounter++; break; }
@@ -233,6 +280,7 @@ void recordtemplate(int (*pON)[]) {
         (*current_hinge_span[inNum]).outorder2 = outNum2;
         (*current_hinge_span[inNum]).edgecount = n_edges;
         (*current_hinge_span[inNum]).edgecount2 = n_edges2;
+        (*current_hinge_span[inNum]).hedge_hash = hedge_hash;
         (*current_hinge_span[inNum]).hedges = (unsigned int*)xcalloc(MAX_HEDGE, sizeof(unsigned int), "hinge edge list");
         for(i=0; i<MAX_HEDGE; i++) (*current_hinge_span[inNum]).hedges[i]=temp_hedges[i];
     }
@@ -311,6 +359,8 @@ void allocate_resources(void) {
     csr_row_ptr = (unsigned long int*)xcalloc(actual_max_keynum + 2, sizeof(unsigned long int), "CSR row pointer");
     first_hinge_span = (struct hinge_span**)xcalloc(actual_max_sections + 1, sizeof(struct hinge_span*), "first hinge span table");
     current_hinge_span = (struct hinge_span**)xcalloc(actual_max_sections + 1, sizeof(struct hinge_span*), "current hinge span table");
+    section_template_len = (size_t)vM * (size_t)vL;
+    section_template_scratch = (unsigned int *)xcalloc(section_template_len, sizeof(*section_template_scratch), "section template scratch");
 
     int p, s, i;
     ordertemplate_master = (unsigned int ****)xcalloc(num_polys, sizeof(unsigned int ***), "order templates");
@@ -364,14 +414,18 @@ unsigned long int get_composite_key(unsigned long int s1, unsigned long int s2, 
 
 void conv_to_array(void) {
     unsigned long int i, s, key=0;
-    struct hinge_span *curr, *tofree;
+    struct hinge_span *curr;
     for(i=0; i<HASH_SIZE; i++) hash_table[i]=NULL;
 
     if (num_polys == 2) {
         for(s=1; s<=actual_max_sections; s++) {
             if (!first_hinge_span[s]) continue;
             curr = first_hinge_span[s];
-            while(curr->nexthinge) { curr = curr->nexthinge; get_composite_key(s, curr->inorder2, &key); }
+            while(curr->nexthinge) {
+                curr = curr->nexthinge;
+                get_composite_key(s, curr->inorder2, &key);
+                get_composite_key(curr->outorder, curr->outorder2, &key);
+            }
         }
         actual_max_states = key;
     } else {
@@ -400,9 +454,9 @@ void conv_to_array(void) {
     for(i=1; i<=actual_max_states; i++) curIdx[i]=1;
     for(s=1; s<=actual_max_sections; s++) {
         if (!first_hinge_span[s]) continue;
-        curr = first_hinge_span[s];
-        while(curr->nexthinge) {
-            tofree = curr; curr = curr->nexthinge; free(tofree);
+        curr = first_hinge_span[s]->nexthinge;
+        while(curr) {
+            struct hinge_span *next = curr->nexthinge;
             unsigned long int srcKey=0, destKey=0;
             if (num_polys == 2) {
                 unsigned long int h = (s * 31337 + curr->inorder2) % HASH_SIZE;
@@ -415,101 +469,70 @@ void conv_to_array(void) {
                 srcKey = s;
                 destKey = curr->outorder;
             }
-            if(srcKey && destKey) {
+            if(!srcKey || !destKey) {
+                fprintf(stderr, "Fatal: missing composite CSR key while converting transition (%lu,%lu)->(%lu,%lu)\n",
+                    s, curr->inorder2, curr->outorder, curr->outorder2);
+                exit(EXIT_FAILURE);
+            }
+            {
                 unsigned long int offset = csr_row_ptr[srcKey] + (curIdx[srcKey] - 1);
+                if (offset + 1 > csr_row_ptr[srcKey + 1]) {
+                    fprintf(stderr, "Fatal: CSR row cursor overflow while writing state %lu\n", srcKey);
+                    exit(EXIT_FAILURE);
+                }
                 csr_out_states[offset + 1] = destKey;
                 csr_edges[offset + 1] = curr->edgecount + curr->edgecount2;
                 curIdx[srcKey]++;
             }
+            free(curr->hedges);
+            free(curr);
+            curr = next;
         }
+        free(first_hinge_span[s]);
+        first_hinge_span[s] = NULL;
+        current_hinge_span[s] = NULL;
     }
     free(curIdx);
     for(i=1; i<=actual_max_states; i++) if(num_outsections[i] > 0) qcksrtII(num_outsections[i], &csr_out_states[csr_row_ptr[i]], &csr_edges[csr_row_ptr[i]]);
 }
 
 double max_eval_LRvec(double fugacity) {
-    int k; unsigned long int i, in_s, out_s, nth; double L0, L1, R0, R1;
-    double *fug_pow = (double*)xmalloc((MAX_HEDGE * 2 + 1) * sizeof(double), "fugacity powers");
-    unsigned long int max_power = (unsigned long int)(MAX_HEDGE * 2);
-    for(i=0; i<=max_power; i++) fug_pow[i] = pow(fugacity, i);
-    for(i=1; i<=actual_max_states; i++) { L_Evector[0][i]=1; R_Evector[0][i]=1; }
-    for(k=1; k<=500; k++) {
-        L0=0.1; R0=0.1;
-        for(i=1; i<=actual_max_states; i++) { L_Evector[1][i]=0; R_Evector[1][i]=0; }
-        #pragma omp parallel for private(in_s, nth, out_s)
-        for(in_s=1; in_s<=actual_max_states; in_s++) {
-            unsigned long int row_start = csr_row_ptr[in_s], row_end = csr_row_ptr[in_s+1];
-            for(nth=row_start + 1; nth<=row_end; nth++) {
-                double pwf = fug_pow[csr_edges[nth]];
-                out_s = csr_out_states[nth];
-                #pragma omp atomic update
-                L_Evector[1][out_s] += L_Evector[0][in_s]*pwf;
-                R_Evector[1][in_s] += R_Evector[0][out_s]*pwf;
-            }
-        }
-        #pragma omp parallel for reduction(max:L0, R0)
-        for(i=1; i<=actual_max_states; i++) { if(L_Evector[1][i]>L0) L0=L_Evector[1][i]; if(R_Evector[1][i]>R0) R0=R_Evector[1][i]; }
-        for(i=1; i<=actual_max_states; i++) { 
-            double nL = L_Evector[1][i]/L0;
-            double nR = R_Evector[1][i]/R0;
-            if(damping_enabled) {
-                L_Evector[1][i] = 0.5 * L_Evector[0][i] + 0.5 * nL;
-                R_Evector[1][i] = 0.5 * R_Evector[0][i] + 0.5 * nR;
-            } else {
-                L_Evector[1][i] = nL;
-                R_Evector[1][i] = nR;
-            }
-        }
-        L1=0.1; R1=0.1;
-        for(i=1; i<=actual_max_states; i++) { L_Evector[0][i]=0; R_Evector[0][i]=0; }
-        #pragma omp parallel for private(in_s, nth, out_s)
-        for(in_s=1; in_s<=actual_max_states; in_s++) {
-            unsigned long int row_start = csr_row_ptr[in_s], row_end = csr_row_ptr[in_s+1];
-            for(nth=row_start + 1; nth<=row_end; nth++) {
-                double pwf = fug_pow[csr_edges[nth]];
-                out_s = csr_out_states[nth];
-                #pragma omp atomic update
-                L_Evector[0][out_s] += L_Evector[1][in_s]*pwf;
-                R_Evector[0][in_s] += R_Evector[1][out_s]*pwf;
-            }
-        }
-        #pragma omp parallel for reduction(max:L1, R1)
-        for(i=1; i<=actual_max_states; i++) { if(L_Evector[0][i]>L1) L1=L_Evector[0][i]; if(R_Evector[0][i]>R1) R1=R_Evector[0][i]; }
-        for(i=1; i<=actual_max_states; i++) { 
-            double nL = L_Evector[0][i]/L1;
-            double nR = R_Evector[0][i]/R1;
-            if(damping_enabled) {
-                L_Evector[0][i] = 0.5 * L_Evector[1][i] + 0.5 * nL;
-                R_Evector[0][i] = 0.5 * R_Evector[1][i] + 0.5 * nR;
-            } else {
-                L_Evector[0][i] = nL;
-                R_Evector[0][i] = nR;
-            }
-        }
-        #pragma omp master
-        { }
-        if(fabs(L1-L0)<convergence_threshold && fabs(R1-R0)<convergence_threshold) { free(fug_pow); return R1 - 1.0; }
-    }
-    free(fug_pow);
-    fatal_error("power method did not converge");
-    return 0.0;
+    return tm_spectral_max_eval(&spectral_problem, fugacity);
 }
 
 double get_Beta(double kappa) {
-    double B=0; unsigned long int i, j;
-    double *fug_pow = (double*)xmalloc((MAX_HEDGE * 2 + 1) * sizeof(double), "fugacity powers");
-    unsigned long int max_power = (unsigned long int)(MAX_HEDGE * 2);
-    for(i=0; i<=max_power; i++) fug_pow[i] = pow(kappa, i);
-    #pragma omp parallel for reduction(+:B) private(i, j)
-    for(i=1; i<=actual_max_states; i++) {
-        unsigned long int row_start = csr_row_ptr[i], row_end = csr_row_ptr[i+1];
-        for(j=row_start + 1; j<=row_end; j++) {
-            double pwf = fug_pow[csr_edges[j]]; 
-            unsigned long int out_state = csr_out_states[j];
-            B += L_Evector[0][i] * csr_edges[j] * pwf * R_Evector[0][out_state];
+    return tm_spectral_beta(&spectral_problem, kappa);
+}
+
+static void find_root_bracket(double (*func)(double), double *x_low, double *x_high)
+{
+    const int max_expansions = 24;
+    double low = 0.3;
+    double high = 0.8;
+    double f_low = func(low);
+    double f_high = func(high);
+
+    for (int step = 0; step < max_expansions && f_low * f_high > 0.0; step++) {
+        if (fabs(f_low) < fabs(f_high)) {
+            low *= 0.5;
+            f_low = func(low);
+        } else {
+            high *= 1.5;
+            f_high = func(high);
+        }
+        if (!isfinite(f_low) || !isfinite(f_high)) {
+            break;
         }
     }
-    free(fug_pow); return B;
+
+    if (!isfinite(f_low) || !isfinite(f_high) || f_low * f_high > 0.0) {
+        fprintf(stderr, "Fatal: unable to bracket spectral root; f(%g)=%g, f(%g)=%g\n",
+            low, f_low, high, f_high);
+        exit(EXIT_FAILURE);
+    }
+
+    *x_low = low;
+    *x_high = high;
 }
 
 void export_eigenvectors(void) {
@@ -584,6 +607,7 @@ void cleanup_resources(void) {
     for(i=0; i<vM; i++) { free(hingestatus[i]); free(colhingeedges[i]); free(rowhingeedges[i]); }
     free(hingestatus); free(colhingeedges); free(rowhingeedges);
     free(sectionkey); free(sectionkey2SAP); free(num_outsections); free(csr_row_ptr);
+    free(section_template_scratch);
     free(first_hinge_span); free(current_hinge_span);
     free(csr_out_states); free(csr_edges);
     free(L_Evector[0]); free(L_Evector[1]); free(R_Evector[0]); free(R_Evector[1]);
@@ -593,7 +617,7 @@ void cleanup_resources(void) {
     }
     for(i=0; i<SECTION_HASH_SIZE; i++) {
         struct section_hash_node *curr = section_hash_table[i], *tmp;
-        while(curr) { tmp = curr; curr = curr->next; free(tmp); }
+        while(curr) { tmp = curr; curr = curr->next; free(tmp->template_values); free(tmp); }
     }
 }
 
@@ -673,13 +697,28 @@ int main(int argc, char **argv) {
 
     L_Evector[0]=vecalloc(0, actual_max_states); L_Evector[1]=vecalloc(0, actual_max_states);
     R_Evector[0]=vecalloc(0, actual_max_states); R_Evector[1]=vecalloc(0, actual_max_states);
+
+    memset(&spectral_problem, 0, sizeof(spectral_problem));
+    spectral_problem.states = actual_max_states;
+    spectral_problem.row_ptr = csr_row_ptr;
+    spectral_problem.out_states = csr_out_states;
+    spectral_problem.edges = csr_edges;
+    spectral_problem.left[0] = L_Evector[0];
+    spectral_problem.left[1] = L_Evector[1];
+    spectral_problem.right[0] = R_Evector[0];
+    spectral_problem.right[1] = R_Evector[1];
+    spectral_problem.convergence_threshold = convergence_threshold;
+    spectral_problem.damping_enabled = damping_enabled;
+    tm_spectral_prepare_transpose(&spectral_problem);
     
     if (manual_x > 0) {
         connectivity_inv = manual_x;
         double max_Evalue = max_eval_LRvec(connectivity_inv) + 1.0;
         printf("[Phase 3] Solved at manual fugacity x=%.6f. Dominant Eigenvalue=%.15f\n", connectivity_inv, max_Evalue);
     } else {
-        connectivity_inv = rtflsp(&max_eval_LRvec, 0.3, 0.8, 1e-8);
+        double bracket_low, bracket_high;
+        find_root_bracket(&max_eval_LRvec, &bracket_low, &bracket_high);
+        connectivity_inv = rtflsp(&max_eval_LRvec, bracket_low, bracket_high, 1e-8);
     }
     printf("[Phase 3] Convergence reached. Aligning with thesis specification...\n");
     
@@ -708,6 +747,7 @@ int main(int argc, char **argv) {
 
     export_eigenvectors();
     export_matrix();
+    tm_spectral_free(&spectral_problem);
     cleanup_resources();
     return 0;
 }

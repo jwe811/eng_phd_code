@@ -64,17 +64,32 @@ static void checked_fwrite(const void *ptr, size_t size, size_t count, FILE *fp,
 struct section_hash_node {
     unsigned long int hash;
     unsigned long int section_num;
+    size_t template_len;
+    unsigned int *template_values;
     struct section_hash_node *next;
 } *section_hash_table[SECTION_HASH_SIZE];
 
 static unsigned long int next_section_num = 1;
 
-static unsigned long int get_or_add_section(unsigned long int section_hash) {
+static int section_template_equal(
+    const struct section_hash_node *node,
+    const unsigned int *template_values,
+    size_t template_len)
+{
+    return node->template_len == template_len &&
+        memcmp(node->template_values, template_values, template_len * sizeof(*template_values)) == 0;
+}
+
+static unsigned long int get_or_add_section(
+    unsigned long int section_hash,
+    const unsigned int *template_values,
+    size_t template_len)
+{
     unsigned long int bucket = section_hash % SECTION_HASH_SIZE;
     struct section_hash_node *node = section_hash_table[bucket];
 
     while (node) {
-        if (node->hash == section_hash) return node->section_num;
+        if (node->hash == section_hash && section_template_equal(node, template_values, template_len)) return node->section_num;
         node = node->next;
     }
 
@@ -86,6 +101,9 @@ static unsigned long int get_or_add_section(unsigned long int section_hash) {
     node = (struct section_hash_node *)xmalloc(sizeof(struct section_hash_node), "section hash node");
     node->hash = section_hash;
     node->section_num = next_section_num;
+    node->template_len = template_len;
+    node->template_values = (unsigned int *)xmalloc(template_len * sizeof(*node->template_values), "section template copy");
+    memcpy(node->template_values, template_values, template_len * sizeof(*node->template_values));
     node->next = section_hash_table[bucket];
     section_hash_table[bucket] = node;
 

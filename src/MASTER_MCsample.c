@@ -1,6 +1,8 @@
 #include "mc_globals.h"
+#include "mc_sampler_weights.h"
 #include "../include/marsaglia.h"
 #include <errno.h>
+#include <limits.h>
 #include <stdarg.h>
 
 static void checked_snprintf(char *buffer, size_t size, const char *fmt, ...) {
@@ -24,7 +26,7 @@ static void ensure_directory(const char *path) {
 	}
 }
 
-void generate_evectors() {
+double generate_evectors() {
 	printf("Starting integrated spectral solver...\n");
 	double fugacity = 1.0; // Uniform sampling uses eigenvectors at z=1.0
 	
@@ -33,6 +35,7 @@ void generate_evectors() {
 	extern double max_eval_LRvec(double fugacity);
 	double calculated_evalue = max_eval_LRvec(fugacity) + 1.0;
 	printf("Calculated dominant eigenvalue: %.15f (Expected: %.15f)\n", calculated_evalue, dom_evalue);
+	dom_evalue = calculated_evalue;
 	
 	// VERIFICATION: Check against archival file if it exists
 	char r_filename[100];
@@ -78,20 +81,103 @@ void generate_evectors() {
 		fclose(export_fp);
 		printf("Calculated eigenvectors exported to %s\n", export_fn);
 	}
+	return calculated_evalue;
+}
+
+static void sampler_fatal_selection(const char *stage, unsigned long int section, unsigned long int limit, double sum, double prob)
+{
+	fprintf(stderr, "Fatal: sampler could not select %s transition from section %lu (outsections=%lu, cumulative=%.17g, target=%.17g)\n",
+		stage, section, limit, sum, prob);
+	exit(EXIT_FAILURE);
+}
+
+static int choose_left_conditioned_tspan(unsigned long int section, double acceptance, double prob)
+{
+	unsigned long int limit = num_outsections[section];
+	unsigned long int nth_tspan = 1;
+	double sumofprobs;
+
+	if (limit == 0 || acceptance <= 0.0 || !isfinite(acceptance)) {
+		sampler_fatal_selection("left-conditioned", section, limit, acceptance, prob);
+	}
+
+	sumofprobs = R_Evector_solve[0][t_nrr[section][nth_tspan]] / acceptance;
+	while (sumofprobs < prob && nth_tspan < limit) {
+		nth_tspan++;
+		sumofprobs = sumofprobs + R_Evector_solve[0][t_nrr[section][nth_tspan]] / acceptance;
+	}
+	if (sumofprobs < prob && fabs(sumofprobs - prob) > 1e-12) {
+		sampler_fatal_selection("left-conditioned", section, limit, sumofprobs, prob);
+	}
+	return (int)nth_tspan;
+}
+
+static int choose_middle_tspan(unsigned long int section, unsigned long int current_tspan, double total_prob, double prob)
+{
+	unsigned long int limit = num_outsections[section];
+	unsigned long int nth_tspan = 1;
+	double denom;
+	double sumofprobs;
+
+	if (limit == 0) {
+		sampler_fatal_selection("middle", section, limit, 0.0, prob);
+	}
+	denom = R_Evector_solve[0][current_tspan] * dom_evalue;
+	if (denom <= 0.0 || !isfinite(denom) || !isfinite(total_prob) || total_prob <= 0.0) {
+		sampler_fatal_selection("middle", section, limit, total_prob, prob);
+	}
+
+	sumofprobs = R_Evector_solve[0][t_nrr[section][nth_tspan]] / denom;
+	while (sumofprobs < prob && nth_tspan < limit) {
+		nth_tspan++;
+		sumofprobs = sumofprobs + R_Evector_solve[0][t_nrr[section][nth_tspan]] / denom;
+	}
+	if (sumofprobs < prob && fabs(sumofprobs - prob) > 1e-12) {
+		sampler_fatal_selection("middle", section, limit, sumofprobs, prob);
+	}
+	return (int)nth_tspan;
+}
+
+static int parse_int_arg(const char *value, const char *label)
+{
+	char *endptr;
+	long parsed;
+
+	errno = 0;
+	parsed = strtol(value, &endptr, 10);
+	if (errno != 0 || *endptr != '\0' || parsed < INT_MIN || parsed > INT_MAX) {
+		fprintf(stderr, "Error: %s must be an integer (received '%s')\n", label, value);
+		exit(EXIT_FAILURE);
+	}
+	return (int)parsed;
+}
+
+static unsigned int parse_uint_arg(const char *value, const char *label)
+{
+	char *endptr;
+	unsigned long parsed;
+
+	errno = 0;
+	parsed = strtoul(value, &endptr, 10);
+	if (errno != 0 || *endptr != '\0' || parsed > UINT_MAX) {
+		fprintf(stderr, "Error: %s must be an unsigned integer (received '%s')\n", label, value);
+		exit(EXIT_FAILURE);
+	}
+	return (unsigned int)parsed;
 }
 
 void parse_args(int argc, char *argv[]) {
 	int opt;
 	while ((opt = getopt(argc, argv, "L:M:s:n:r:S:m:")) != -1) {
 		switch (opt) {
-			case 'L': L = atoi(optarg); break;
-			case 'M': M = atoi(optarg); break;
-			case 's': totalspan = atoi(optarg); break;
-			case 'n': samplesize = atoi(optarg); break;
-			case 'r': runnum = atoi(optarg); break;
-			case 'S': seednum = (unsigned int)atoi(optarg); break;
+			case 'L': L = parse_int_arg(optarg, "Lattice Width (-L)"); break;
+			case 'M': M = parse_int_arg(optarg, "Lattice Height (-M)"); break;
+			case 's': totalspan = parse_int_arg(optarg, "Span (-s)"); break;
+			case 'n': samplesize = parse_int_arg(optarg, "Sample Size (-n)"); break;
+			case 'r': runnum = parse_int_arg(optarg, "Run Number (-r)"); break;
+			case 'S': seednum = parse_uint_arg(optarg, "Seed (-S)"); break;
 			case 'm': 
-				mode = atoi(optarg);
+				mode = parse_int_arg(optarg, "Mode (-m)");
 				if (mode == 1 || mode == 3) ham_check = 1;
 				break;
 			default:
@@ -256,8 +342,43 @@ void run_rejection_sampler() {
 	ensure_directory("data");
 	ensure_directory(output_dir);
 	checked_snprintf(filename, sizeof(filename), "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
-	fp = fopen(filename, "w");
 
+	unsigned long int secnum, sec1, sec2;
+	int nth_endhinge, nth_walk;
+	int curspan;
+	int nth_tspan;
+
+	unsigned long int chosenLEH;
+	unsigned long int curLEH;
+	int chosenREH;
+
+	unsigned long int curSample=0;
+
+	double prob;
+	double sumofprobs;
+	unsigned long int cur_tspan_num;
+	McSamplerWeightInput weight_input;
+	McSamplerWeights weights;
+
+	// Always calculate eigenvectors at runtime
+	generate_evectors();
+
+	double* R_Evector;
+	R_Evector = R_Evector_solve[0]; // Point directly to the calculated global vector
+
+	memset(&weight_input, 0, sizeof(weight_input));
+	weight_input.max_sections = max_sections;
+	weight_input.max_tspans = max_tspans;
+	weight_input.total_left_endhinges = tot_left_endhinges;
+	weight_input.num_left_endhinges = num_left_endhinges;
+	weight_input.num_right_endhinges = num_right_endhinges;
+	weight_input.num_outsections = num_outsections;
+	weight_input.t_outsection = t_outsection;
+	weight_input.t_nrr = t_nrr;
+	weight_input.right_evector = R_Evector;
+	mc_sampler_weights_build(&weight_input, &weights);
+
+	fp = fopen(filename, "w");
 	if(fp != NULL){
 		fprintf(fp, "UofS\n");
 		printf("printed UofS in file '%s'\n", filename);
@@ -266,61 +387,8 @@ void run_rejection_sampler() {
 		exit(1);
 	}
 
-	unsigned long int secnum, sec1, sec2;
-	int nth_endhinge, nth_walk;
-	int curspan;
-	int nth_tspan;
-
-	int chosenLEH;
-	int curLEH;
-	int chosenREH;
-
-	unsigned long int curSample=0;
-
-	double prob;
-	double sumofprobs;
-	unsigned long int cur_tspan_num;
-
-	// Always calculate eigenvectors at runtime
-	generate_evectors();
-
-	double* R_Evector;
-	R_Evector = R_Evector_solve[0]; // Point directly to the calculated global vector
-
-	double maxt_one=0.0;
-	double t_one[tot_left_endhinges];
-	curLEH=0;
-	int i, j, k;
-	for(i=1; i<=max_sections; i++){
-		for(j=1; j<=num_left_endhinges[i]; j++){
-			t_one[curLEH]=0;
-			for(k=1; k<=num_outsections[i]; k++){
-				t_one[curLEH] = t_one[curLEH] + R_Evector[t_nrr[i][k]];
-			}
-			if(t_one[curLEH]>maxt_one){
-				maxt_one = t_one[curLEH];
-			}
-			curLEH++;
-		}
-	}
+	int i, j;
 	unsigned long int reject_one=0;
-
-	double maxt_two=0.0;
-	double* t_two;
-	t_two = (double*)malloc(sizeof(double)*(max_tspans+1));
-	if(t_two==NULL){
-		fprintf(stderr, "Out of memory");
-		exit(0);
-	}
-
-	for(i=1; i<=max_sections; i++){
-		for(j=1; j<=num_outsections[i]; j++){
-			t_two[t_nrr[i][j]] = num_right_endhinges[t_outsection[i][j]] / R_Evector[t_nrr[i][j]];
-			if(t_two[t_nrr[i][j]] > maxt_two){
-				maxt_two = t_two[t_nrr[i][j]];
-			}
-		}
-	}
 	unsigned long int reject_two=0;
 
 	while(curSample <= samplesize-1){
@@ -335,87 +403,75 @@ void run_rejection_sampler() {
 		}
 
 		chosenLEH = floor(ran1real_()*tot_left_endhinges);
+		if (chosenLEH >= weights.left_count) chosenLEH = weights.left_count - 1;
 
-		curLEH=0;
-		for(secnum=1; secnum<=max_sections; secnum++){
-			for(nth_endhinge=1; nth_endhinge<=num_left_endhinges[secnum]; nth_endhinge++){
-				if(curLEH==chosenLEH){
-					if( ran1real_() < t_one[curLEH] / maxt_one ){
-						num_built_walks = Lend_num_walks[secnum][nth_endhinge];
-						for(nth_walk=0; nth_walk<=num_built_walks-1; nth_walk++){
-							for(i=0; i<=2; i++){
-								built_walks_start[nth_walk][i] = Lend_start[secnum][nth_endhinge][i][nth_walk];
-								built_walks_end[nth_walk][i] = Lend_end[secnum][nth_endhinge][i][nth_walk];
-							}
-							for(i=0; i<=vM*vL; i++){
-								built_walks_direcs[nth_walk][i] = Lend_walks[secnum][nth_endhinge][i][nth_walk];
-							}
-							for(i=vM*vL+1; i<=vM*vL*(totalspan+1)-1; i++){
-								built_walks_direcs[nth_walk][i]=0;
-							}
-						}
-						curspan=1;
-						sec1=secnum;
-
-						prob = ran1real_();
-						nth_tspan=1;
-						sumofprobs = R_Evector[t_nrr[sec1][nth_tspan]] / t_one[curLEH];
-						while(sumofprobs<prob){
-							nth_tspan++;
-							sumofprobs = sumofprobs + R_Evector[t_nrr[sec1][nth_tspan]] / t_one[curLEH];
-						}
-						add_to_built_walks(sec1, nth_tspan);
-						sec2 = t_outsection[sec1][nth_tspan];
-						cur_tspan_num = t_nrr[sec1][nth_tspan];
-						curspan++;
-
-						while(curspan < totalspan){
-							sumofprobs=0.0;
-							for(i=1; i<=num_outsections[sec2]; i++){
-								sumofprobs = sumofprobs + R_Evector[t_nrr[sec2][i]] / R_Evector[cur_tspan_num] / dom_evalue;
-							}
-
-							if(sumofprobs<0.9 || sumofprobs>1.1){
-								printf("second sumofprobs=%f\n", sumofprobs);
-								printf("problem with second sumofprobs when leaving tspan number %lu, (made up of %lu and %lu)\n", cur_tspan_num, sec1, sec2);
-								printf("This was on sample %lu. Exitting\n", curSample);
-								exit(1);
-							}
-
-							prob = ran1real_();
-							prob = prob * sumofprobs;
-							nth_tspan=1;
-							sumofprobs = R_Evector[t_nrr[sec2][nth_tspan]] / R_Evector[cur_tspan_num] / dom_evalue;
-							while(sumofprobs<prob){
-								nth_tspan++;
-								sumofprobs = sumofprobs + R_Evector[t_nrr[sec2][nth_tspan]] / R_Evector[cur_tspan_num] / dom_evalue;
-							}
-							sec1=sec2;
-							add_to_built_walks(sec1, nth_tspan);
-							sec2 = t_outsection[sec1][nth_tspan];
-							cur_tspan_num = t_nrr[sec1][nth_tspan];
-							curspan++;
-						}
-
-						if( ran1real_() < t_two[cur_tspan_num] / maxt_two ){
-							chosenREH = 1 + floor(ran1real_()*num_right_endhinges[sec2]);
-							add_right_endhinge(sec2, chosenREH);
-							curSample++;
-							printtofile();
-						}
-						else{
-							reject_two++;
-						}
-					}
-					else{
-						reject_one++;
-					}
+		secnum = weights.left_section[chosenLEH];
+		nth_endhinge = weights.left_endhinge[chosenLEH];
+		curLEH = chosenLEH;
+		if( ran1real_() < weights.left_acceptance[curLEH] / weights.max_left_acceptance ){
+			num_built_walks = Lend_num_walks[secnum][nth_endhinge];
+			for(nth_walk=0; nth_walk<=num_built_walks-1; nth_walk++){
+				for(i=0; i<=2; i++){
+					built_walks_start[nth_walk][i] = Lend_start[secnum][nth_endhinge][i][nth_walk];
+					built_walks_end[nth_walk][i] = Lend_end[secnum][nth_endhinge][i][nth_walk];
 				}
-				else if(curLEH>chosenLEH){
-					break;
+				for(i=0; i<=vM*vL; i++){
+					built_walks_direcs[nth_walk][i] = Lend_walks[secnum][nth_endhinge][i][nth_walk];
 				}
-				curLEH++;
+				for(i=vM*vL+1; i<=vM*vL*(totalspan+1)-1; i++){
+					built_walks_direcs[nth_walk][i]=0;
+				}
 			}
+			curspan=1;
+			sec1=secnum;
+
+			prob = ran1real_();
+			nth_tspan = choose_left_conditioned_tspan(sec1, weights.left_acceptance[curLEH], prob);
+			add_to_built_walks(sec1, nth_tspan);
+			sec2 = t_outsection[sec1][nth_tspan];
+			cur_tspan_num = t_nrr[sec1][nth_tspan];
+			curspan++;
+
+			while(curspan < totalspan){
+				sumofprobs=0.0;
+				for(i=1; i<=num_outsections[sec2]; i++){
+					sumofprobs = sumofprobs + R_Evector[t_nrr[sec2][i]] / R_Evector[cur_tspan_num] / dom_evalue;
+				}
+
+				if(sumofprobs<0.9 || sumofprobs>1.1){
+					printf("second sumofprobs=%f\n", sumofprobs);
+					printf("problem with second sumofprobs when leaving tspan number %lu, (made up of %lu and %lu)\n", cur_tspan_num, sec1, sec2);
+					printf("This was on sample %lu. Exitting\n", curSample);
+					exit(1);
+				}
+
+				prob = ran1real_();
+				prob = prob * sumofprobs;
+				nth_tspan = choose_middle_tspan(sec2, cur_tspan_num, sumofprobs, prob);
+				sec1=sec2;
+				add_to_built_walks(sec1, nth_tspan);
+				sec2 = t_outsection[sec1][nth_tspan];
+				cur_tspan_num = t_nrr[sec1][nth_tspan];
+				curspan++;
+			}
+
+			if( ran1real_() < weights.right_acceptance[cur_tspan_num] / weights.max_right_acceptance ){
+				if (num_right_endhinges[sec2] == 0) {
+					fprintf(stderr, "Fatal: no right endhinges available for sampled terminal section %lu\n", sec2);
+					exit(EXIT_FAILURE);
+				}
+				chosenREH = 1 + floor(ran1real_()*num_right_endhinges[sec2]);
+				if ((unsigned long int)chosenREH > num_right_endhinges[sec2]) chosenREH = (int)num_right_endhinges[sec2];
+				add_right_endhinge(sec2, chosenREH);
+				curSample++;
+				printtofile();
+			}
+			else{
+				reject_two++;
+			}
+		}
+		else{
+			reject_one++;
 		}
 	}
 
@@ -429,7 +485,7 @@ void run_rejection_sampler() {
 	printf("Rejected at first step %lu times\n", reject_one);
 	printf("Rejected at last step %lu times\n", reject_two);
 	
-	free(t_two);
+	mc_sampler_weights_free(&weights);
 }
 
 void free_sampler_memory() {
@@ -457,6 +513,27 @@ void free_sampler_memory() {
 
 int main(int argc, char *argv[]) {
 	parse_args(argc, argv);
+
+	if (L < 0 || M < 0) {
+		fprintf(stderr, "Error: L and M must be non-negative (received L=%d, M=%d).\n", L, M);
+		exit(EXIT_FAILURE);
+	}
+	if (L == 0 && M == 0) {
+		fprintf(stderr, "Error: At least one lattice dimension must be positive.\n");
+		exit(EXIT_FAILURE);
+	}
+	if (samplesize <= 0) {
+		fprintf(stderr, "Error: Sample Size (-n) must be positive (received %d).\n", samplesize);
+		exit(EXIT_FAILURE);
+	}
+	if (totalspan < 2) {
+		fprintf(stderr, "Error: Span (-s) must be at least 2 (received %d).\n", totalspan);
+		exit(EXIT_FAILURE);
+	}
+	if (mode < 0 || mode > 3) {
+		fprintf(stderr, "Error: Invalid Simulation Mode (-m %d). Valid modes are 0, 1, 2, 3.\n", mode);
+		exit(EXIT_FAILURE);
+	}
 
 	if (ham_check && ((L + 1) * (M + 1) * (totalspan + 1)) % 2 != 0) {
 		fprintf(stderr, "\nError: Impossible to construct a Hamiltonian polygon with an odd number of vertices on a bipartite lattice (L=%d, M=%d, span=%d).\n\n", L, M, totalspan);

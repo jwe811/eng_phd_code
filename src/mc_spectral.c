@@ -19,6 +19,9 @@ typedef struct McSpectralCsr {
 	unsigned long int *row_ptr;
 	unsigned long int *cols;
 	unsigned long int *edges;
+	unsigned long int *transpose_row_ptr;
+	unsigned long int *transpose_rows;
+	unsigned long int *transpose_edges;
 	unsigned long int max_edge;
 } McSpectralCsr;
 
@@ -56,6 +59,9 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 	csr.nnz = csr.row_ptr[csr.rows + 1];
 	csr.cols = mc_xcalloc(csr.nnz + 1, sizeof(*csr.cols), "2SAP spectral CSR columns");
 	csr.edges = mc_xcalloc(csr.nnz + 1, sizeof(*csr.edges), "2SAP spectral CSR edges");
+	csr.transpose_row_ptr = mc_xcalloc(csr.rows + 2, sizeof(*csr.transpose_row_ptr), "2SAP spectral transpose CSR row pointers");
+	csr.transpose_rows = mc_xcalloc(csr.nnz + 1, sizeof(*csr.transpose_rows), "2SAP spectral transpose CSR rows");
+	csr.transpose_edges = mc_xcalloc(csr.nnz + 1, sizeof(*csr.transpose_edges), "2SAP spectral transpose CSR edges");
 
 	row = 0;
 	for (insection = 1; insection <= input->max_keynum; insection++) {
@@ -68,8 +74,28 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 				pos++;
 				csr.cols[pos] = input->tspans_nrr[outsection][right_tspan];
 				csr.edges[pos] = edge_count;
+				csr.transpose_row_ptr[csr.cols[pos] + 1]++;
 			}
 		}
+	}
+
+	for (row = 1; row <= csr.rows; row++) {
+		csr.transpose_row_ptr[row + 1] += csr.transpose_row_ptr[row];
+	}
+	{
+		unsigned long int *write_cursor = mc_xmalloc((csr.rows + 2) * sizeof(*write_cursor), "2SAP spectral transpose CSR write cursors");
+		memcpy(write_cursor, csr.transpose_row_ptr, (csr.rows + 2) * sizeof(*write_cursor));
+		for (row = 1; row <= csr.rows; row++) {
+			unsigned long int start = csr.row_ptr[row] + 1;
+			unsigned long int end = csr.row_ptr[row + 1];
+			for (pos = start; pos <= end; pos++) {
+				unsigned long int col = csr.cols[pos];
+				unsigned long int out_pos = ++write_cursor[col];
+				csr.transpose_rows[out_pos] = row;
+				csr.transpose_edges[out_pos] = csr.edges[pos];
+			}
+		}
+		free(write_cursor);
 	}
 
 	return csr;
@@ -80,6 +106,9 @@ static void free_transition_csr(McSpectralCsr *csr)
 	free(csr->row_ptr);
 	free(csr->cols);
 	free(csr->edges);
+	free(csr->transpose_row_ptr);
+	free(csr->transpose_rows);
+	free(csr->transpose_edges);
 	memset(csr, 0, sizeof(*csr));
 }
 
@@ -116,11 +145,22 @@ static void multiply_transition_matrix(
 			unsigned long int col = csr->cols[pos];
 			double weight = powers[csr->edges[pos]];
 
-			#pragma omp atomic update
-			left_out[col] += left_in[row] * weight;
 			right_sum += right_in[col] * weight;
 		}
 		right_out[row] += right_sum;
+	}
+
+	#pragma omp parallel for schedule(static)
+	for (row = 1; row <= csr->rows; row++) {
+		unsigned long int pos;
+		unsigned long int start = csr->transpose_row_ptr[row] + 1;
+		unsigned long int end = csr->transpose_row_ptr[row + 1];
+		double left_sum = 0.0;
+
+		for (pos = start; pos <= end; pos++) {
+			left_sum += left_in[csr->transpose_rows[pos]] * powers[csr->transpose_edges[pos]];
+		}
+		left_out[row] += left_sum;
 	}
 }
 

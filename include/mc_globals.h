@@ -171,7 +171,7 @@ void set_system_params();
 void allocate_globals();
 int run_integrated_2sap_sampler(int argc, char *argv[]);
 int run_integrated_2sap_ham_sampler(int argc, char *argv[]);
-void generate_evectors();
+double generate_evectors();
 void conv_to_array(void);
 void conv_endhinges_to_array(void);
 void enterhinge(PolygonState *poly, int i, int j, int side, int (*pointordNum)[3], int curlength);
