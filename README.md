@@ -318,7 +318,7 @@ Use `scripts/topology_tool.py` for BFACF-style shrink labels, label-file
 workflows, and simple linking-number checks.
 
 ```bash
-# Label each SAP as unknot or knot_or_unresolved using the shrink heuristic
+# Label each SAP with the conservative shrink heuristic
 python3 scripts/topology_tool.py shrink-id data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/shrink_ids.txt
 
 # Print shrunk lengths
@@ -335,8 +335,13 @@ python3 scripts/topology_tool.py linking-number data/CreatorAll/All_2SAPs/All2SA
 ```
 
 The shrink classifier is deterministic by default and intentionally
-conservative. Objects that do not shrink below the traditional threshold are
-labeled `knot_or_unresolved`.
+conservative. It writes one single-token label per polygon:
+
+- `unknot`: the polygon shrank below the chosen threshold, so the heuristic
+  treats it as unknotted.
+- `knot_or_unresolved`: the polygon did not shrink below the threshold. This
+  may be a true knot, or it may be an unknot that this simple shrink pass did
+  not simplify far enough.
 
 ## Build And Test Commands
 

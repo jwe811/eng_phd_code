@@ -30,7 +30,7 @@ CREATOR_SRC = $(SRCDIR)/MASTER_CreatorAll.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/m
               $(SRCDIR)/mc_builder.c $(SRCDIR)/mc_utils.c \
               $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
               $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c
-MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard deps/mc_compat/*/*.c)
+MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard deps/mc_compat/*/*.c) $(wildcard deps/utils/*.c)
 
 # Object files
 TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
