@@ -335,8 +335,8 @@ python3 scripts/topology_tool.py linking-number data/CreatorAll/All_2SAPs/All2SA
 ```
 
 The shrink classifier is deterministic by default and intentionally
-conservative. Objects that do not shrink below the archive threshold are labeled
-`knot_or_unresolved`.
+conservative. Objects that do not shrink below the traditional threshold are
+labeled `knot_or_unresolved`.
 
 ## Build And Test Commands
 

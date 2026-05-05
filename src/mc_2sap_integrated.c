@@ -105,7 +105,7 @@ static void set_2sap_system_params(int is_ham)
 #include <time.h>		/* Used to time the program		*/
 #include <math.h>		/* Standard math functions (i.e. pow)	*/
 #include <sys/time.h>
-/* Source-level namespace for archive-derived 2SAP helper includes. */
+/* Source-level namespace for compatibility 2SAP helper includes. */
 #define EndOrdNum mc2_EndOrdNum
 #define EndOrdNum2 mc2_EndOrdNum2
 #define LFlag2 mc2_LFlag2

@@ -132,12 +132,12 @@ unsigned long int MC2_NAME(num_section_norder)(int side) {
 }
 
 unsigned long int MC2_NAME(num_section_endhinge_norder3_12V)(void) {
-    fprintf(stderr, "Num_section_12V_endhinge_nonordered2.c is missing from archive!\n");
+    fprintf(stderr, "Num_section_12V_endhinge_nonordered2.c is not available in mc_compat.\n");
     exit(1);
 }
 
 unsigned long int MC2_NAME(num_section_endhinge_norder4_12V)(void) {
-    fprintf(stderr, "Num_section_12V_endhinge_nonordered2.c is missing from archive!\n");
+    fprintf(stderr, "Num_section_12V_endhinge_nonordered2.c is not available in mc_compat.\n");
     exit(1);
 }
 

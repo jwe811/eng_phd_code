@@ -1,9 +1,9 @@
-"""BFACF-style shrink heuristic revived from the archive.
+"""BFACF-style shrink heuristic for post-processing polygon samples.
 
 This is intended as a conservative post-processing classifier. It performs the
-archive's core -2 shrink move and corner-swap move with a deterministic random
-seed option. It reports "unknot" when a polygon shrinks below the traditional
-24-edge threshold; otherwise it reports "knot_or_unresolved".
+traditional -2 shrink move and corner-swap move with a deterministic random seed
+option. It reports "unknot" when a polygon shrinks below the traditional 24-edge
+threshold; otherwise it reports "knot_or_unresolved".
 """
 
 from __future__ import annotations
@@ -46,4 +46,3 @@ def shrink_length(poly: Polygon, iterations: int | None = None, seed: int = 1) -
 
 def shrink_label(poly: Polygon, iterations: int | None = None, seed: int = 1, unknot_threshold: int = 24) -> str:
     return "unknot" if shrink_length(poly, iterations, seed) < unknot_threshold else "knot_or_unresolved"
-
