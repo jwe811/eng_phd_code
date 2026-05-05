@@ -29,7 +29,7 @@ MC_SRC = $(SRCDIR)/MASTER_MCsample.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/mc_globa
 # Object files
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
 
-.PHONY: all clean tm sampler test verify directories
+.PHONY: all clean tm sampler test verify parity-audit directories
 
 all: directories $(TM_OUT) $(MC_OUT)
 
@@ -64,3 +64,6 @@ test: directories $(TM_OUT)
 verify: directories $(TM_OUT)
 	@mkdir -p data/TMresults
 	bash scripts/verify_all.sh
+
+parity-audit: all
+	python3 scripts/parity_audit.py --no-build
