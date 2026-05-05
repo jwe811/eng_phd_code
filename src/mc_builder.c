@@ -1,27 +1,27 @@
 #include "mc_globals.h"
 
 void
-enterhinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
+enterhinge(PolygonState *poly, int i, int j, int side, int (*pointordNum)[3], int curlength)
 {
-	if( !(alreadyentered[i][j]==1 && side==0) ){
+	if( !(poly->alreadyentered[i][j]==1 && side==0) ){
 	//	printf("entered hinge (i=%d, j=%d, side=%d\n", i, j, side);
 
 		curlength++;
-		num_walks++;
+		(*poly->num_walks)++;
 		if(side==0){
-			curstart[0][num_walks-1]=0;
-			curwalks[curlength-1][num_walks-1] = 1;
+			poly->curstart[0][(*poly->num_walks)-1]=0;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 1;
 		}
 		else{ //side==1
-			curstart[0][num_walks-1]=2;
-			curwalks[curlength-1][num_walks-1] = 2;
+			poly->curstart[0][(*poly->num_walks)-1]=2;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 2;
 		}
-		curstart[1][num_walks-1]=j;
-		curstart[2][num_walks-1]=i;
+		poly->curstart[1][(*poly->num_walks)-1]=j;
+		poly->curstart[2][(*poly->num_walks)-1]=i;
 
 
-		hingestatus[i][j]=1;
-		ordertemplate[side][i][j] = (*pointordNum)[side];
+		poly->hingestatus[i][j]=1;
+		poly->ordertemplate[side][i][j] = (*pointordNum)[side];
 			/* section edge through which the SAW enters the hinge is given a number */
 			/* this number represents the order in which it occurs in the section    */
 
@@ -35,13 +35,13 @@ enterhinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 		/* it may explore edges in the vertical direction => coleges (...) is called    */
 		/* in each case the currrent state of the hinge is passed via the parameters    */
 
-		leavehinge(i, j, side ^ 1, pointordNum, curlength);
+		leavehinge(poly, i, j, side ^ 1, pointordNum, curlength);
 			/* the SAW leaves the hinge out the opposite side, hence (side ^ 1) is passed */
 			/* if side = 1 then side ^ 1 = 0 */
 			/* if side = 0 then side ^ 1 = 1 */
-		rowedges(i, j, pointordNum, curlength);
+		rowedges(poly, i, j, pointordNum, curlength);
 			/* horizontal edges are explored */
-		coledges(i, j, pointordNum, curlength);
+		coledges(poly, i, j, pointordNum, curlength);
 			/* vertical edges are explored */
 
 		(*pointordNum)[side]--;
@@ -51,19 +51,19 @@ enterhinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 			/* locations). In essense the intial incremention above is nullified so	  */
 			/* when enterhinge is called again the entering edge is numbered properly */
 		
-		ordertemplate[side][i][j] = 0;
+		poly->ordertemplate[side][i][j] = 0;
 			/* the edge that was recorded must now be erased as this edge may not exist */
 			/* as part of the SAW when alternate possibilities are explored. In the case */
 			/* that it does not exist it needs to be numbered as "0" (zero).             */
-		hingestatus[i][j]=0;
+		poly->hingestatus[i][j]=0;
 
-		curstart[0][num_walks-1]=-1;
-		curstart[1][num_walks-1]=-1;
-		curstart[2][num_walks-1]=-1;
-		curwalks[curlength-1][num_walks-1] = 0;
+		poly->curstart[0][(*poly->num_walks)-1]=-1;
+		poly->curstart[1][(*poly->num_walks)-1]=-1;
+		poly->curstart[2][(*poly->num_walks)-1]=-1;
+		poly->curwalks[curlength-1][(*poly->num_walks)-1] = 0;
 
 		curlength--;
-		num_walks--;
+		(*poly->num_walks)--;
 	//	printf("finished enterhinge\n");
 	}
 	return;
@@ -73,29 +73,29 @@ enterhinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 /***************************************************************************/
 
 void
-leavehinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
+leavehinge(PolygonState *poly, int i, int j, int side, int (*pointordNum)[3], int curlength)
 /* called by: rowedges,coledges,enterhinge */
 {
-	if( !(alreadyentered[i][j]==1 && side==0) ){
+	if( !(poly->alreadyentered[i][j]==1 && side==0) ){
 	//	printf("left hinge (i=%d, j=%d, side=%d\n", i, j, side);
 
 		curlength++;
 		if(side==0){
-			curend[0][num_walks-1]=0;
-			curwalks[curlength-1][num_walks-1] = 2;
+			poly->curend[0][(*poly->num_walks)-1]=0;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 2;
 		}
 		else{ //side==1
-			curend[0][num_walks-1]=2;
-			curwalks[curlength-1][num_walks-1] = 1;
+			poly->curend[0][(*poly->num_walks)-1]=2;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 1;
 		}
-		curend[1][num_walks-1]=j;
-		curend[2][num_walks-1]=i;
+		poly->curend[1][(*poly->num_walks)-1]=j;
+		poly->curend[2][(*poly->num_walks)-1]=i;
 
 
 		int ii;	/*vertex number in vertical direction*/
 		int jj;		/*vertex number in horizontal direction */
 
-		ordertemplate[side][i][j] = (*pointordNum)[side];	/* record the section
+		poly->ordertemplate[side][i][j] = (*pointordNum)[side];	/* record the section
 									 * edge (i.e. the
 									 * leaving edge) */
 		(*pointordNum)[side]++;
@@ -109,7 +109,7 @@ leavehinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 				if (ham_check) {
 					for (int ii = 0; ii <= M; ii++) {
 						for (int jj = 0; jj <= L; jj++) {
-							if (hingestatus[ii][jj] == 0) { isHam = 0; break; }
+							if (poly->hingestatus[ii][jj] == 0) { isHam = 0; break; }
 						}
 						if (!isHam) break;
 					}
@@ -134,10 +134,10 @@ leavehinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 		/* these are the "vertical" locations of the vertices being considered */
 			for (jj = 0; jj <= L; jj++) {
 			/* these are the horizontal locations of the vertices being considered */
-				if (hingestatus[ii][jj] == 0) {
+				if (poly->hingestatus[ii][jj] == 0) {
 				/* if the vertex is not occupied then explore entering the hinge at this vertex */
 				/* this maintains the self avoiding nature of the walk */
-					enterhinge(ii, jj, side, pointordNum,0);
+					enterhinge(poly, ii, jj, side, pointordNum,0);
 				}
 			}
 		}
@@ -149,79 +149,79 @@ leavehinge(int i, int j, int side, int (*pointordNum)[3], int curlength)
 			/* the intial incremention above is nullified so when leavehinge is 	  */
 			/* called again the leaving edge is numbered properly  			  */
 		
-		ordertemplate[side][i][j] = 0;
+		poly->ordertemplate[side][i][j] = 0;
 			/* the edge that was recorded must now be erased as this edge may not exist  */
 			/* as part of the SAW when alternate possibilities are explored. In the case */
 			/* that it does not exist it needs to be numbered as "0" (zero).             */
 	//		printf("finished leavehinge\n");
 
 
-		curend[0][num_walks-1]=-1;
-		curend[1][num_walks-1]=-1;
-		curend[2][num_walks-1]=-1;
-		curwalks[curlength-1][num_walks-1] = 0;
+		poly->curend[0][(*poly->num_walks)-1]=-1;
+		poly->curend[1][(*poly->num_walks)-1]=-1;
+		poly->curend[2][(*poly->num_walks)-1]=-1;
+		poly->curwalks[curlength-1][(*poly->num_walks)-1] = 0;
 		curlength--;
 	}
 	return;
 }
 /***************************************************************************/
 
-void rowedges(int i, int j, int (*pointordNum)[3], int curlength)  //y-direction
+void rowedges(PolygonState *poly, int i, int j, int (*pointordNum)[3], int curlength)  //y-direction
 {
 //	printf("rowedges called (i=%d, j=%d\n", i, j);
 	if(j>0){
-		if(hingestatus[i][j-1]==0){
-			hingestatus[i][j-1]=1;
+		if(poly->hingestatus[i][j-1]==0){
+			poly->hingestatus[i][j-1]=1;
 
 			curlength++;
-			curwalks[curlength-1][num_walks-1] = 4;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 4;
 
 			(*pointordNum)[2]++;	/* count the edge in the hinge */
 						/* if there is ever a need to record the actual configuration of */
 						/* the hinge this would be an appropriate place to do so */
-			rowhingeedges[i][j-1]=1;
-			leavehinge(i, j-1, 0, pointordNum, curlength);
+			poly->rowhingeedges[i][j-1]=1;
+			leavehinge(poly, i, j-1, 0, pointordNum, curlength);
 				/* exit the hinge on side 0 with j moved*/
-			leavehinge(i, j-1, 1, pointordNum, curlength);
+			leavehinge(poly, i, j-1, 1, pointordNum, curlength);
 				/* exit the hinge on side 1 with j moved*/
-			rowedges(i, j-1, pointordNum, curlength);
+			rowedges(poly, i, j-1, pointordNum, curlength);
 				/* explore horizontal moves within the hinge */
-			coledges(i, j-1, pointordNum, curlength);
+			coledges(poly, i, j-1, pointordNum, curlength);
 				/* explore vertical moves within the hinge */
 			(*pointordNum)[2]--;
 				/* decrement the number of edges in the hinge */
-			hingestatus[i][j-1]=0;
-			rowhingeedges[i][j-1]=0;
+			poly->hingestatus[i][j-1]=0;
+			poly->rowhingeedges[i][j-1]=0;
 
-			curwalks[curlength-1][num_walks-1] = 0;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 0;
 			curlength--;
 		}
 	}
 	if(j<L){
-		if(hingestatus[i][j+1]==0){
-			hingestatus[i][j+1]=1;
+		if(poly->hingestatus[i][j+1]==0){
+			poly->hingestatus[i][j+1]=1;
 
 			curlength++;
-			curwalks[curlength-1][num_walks-1] = 3;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 3;
 
 			(*pointordNum)[2]++;	/* count the edge in the hinge */
 						/* if there is ever a need to record the actual configuration of */
 						/* the hinge this would be an appropriate place to do so */
-			rowhingeedges[i][j]=1;
-			leavehinge(i, j+1, 0, pointordNum, curlength);
+			poly->rowhingeedges[i][j]=1;
+			leavehinge(poly, i, j+1, 0, pointordNum, curlength);
 				/* exit the hinge on side 0 with j moved*/
-			leavehinge(i, j+1, 1, pointordNum, curlength);
+			leavehinge(poly, i, j+1, 1, pointordNum, curlength);
 				/* exit the hinge on side 1 with j moved*/
-			rowedges(i, j+1, pointordNum, curlength);
+			rowedges(poly, i, j+1, pointordNum, curlength);
 				/* explore horizontal moves within the hinge */
-			coledges(i, j+1, pointordNum, curlength);
+			coledges(poly, i, j+1, pointordNum, curlength);
 				/* explore vertical moves within the hinge */
 			(*pointordNum)[2]--;
 				/* decrement the number of edges in the hinge */
-			hingestatus[i][j+1]=0;
-			rowhingeedges[i][j]=0;
+			poly->hingestatus[i][j+1]=0;
+			poly->rowhingeedges[i][j]=0;
 
-			curwalks[curlength-1][num_walks-1] = 0;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 0;
 			curlength--;
 		}
 	}
@@ -231,63 +231,63 @@ void rowedges(int i, int j, int (*pointordNum)[3], int curlength)  //y-direction
 
 /***************************************************************************/
 
-void coledges(int i, int j, int (*pointordNum)[3], int curlength)  //z-direction
+void coledges(PolygonState *poly, int i, int j, int (*pointordNum)[3], int curlength)  //z-direction
 /* called by rowedges,coledges */
 {
 //	printf("coledges called (i=%d, j=%d\n", i, j);
 	if(i>0){
-		if(hingestatus[i-1][j]==0){
-			hingestatus[i-1][j]=1;
+		if(poly->hingestatus[i-1][j]==0){
+			poly->hingestatus[i-1][j]=1;
 
 			curlength++;
-			curwalks[curlength-1][num_walks-1] = 6;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 6;
 
 			(*pointordNum)[2]++;	/* count the edge in the hinge */
 						/* if there is ever a need to record the actual configuration of */
 						/* the hinge this would be an appropriate place to do so */
-			colhingeedges[i-1][j]=1;
-			leavehinge(i-1, j, 0, pointordNum, curlength);
+			poly->colhingeedges[i-1][j]=1;
+			leavehinge(poly, i-1, j, 0, pointordNum, curlength);
 				/* exit the hinge on side 0 with j moved*/
-			leavehinge(i-1, j, 1, pointordNum, curlength);
+			leavehinge(poly, i-1, j, 1, pointordNum, curlength);
 				/* exit the hinge on side 1 with j moved*/
-			rowedges(i-1, j, pointordNum, curlength);
+			rowedges(poly, i-1, j, pointordNum, curlength);
 				/* explore horizontal moves within the hinge */
-			coledges(i-1, j, pointordNum, curlength);
+			coledges(poly, i-1, j, pointordNum, curlength);
 				/* explore vertical moves within the hinge */
 			(*pointordNum)[2]--;
 				/* decrement the number of edges in the hinge */
-			hingestatus[i-1][j]=0;
-			colhingeedges[i-1][j]=0;
+			poly->hingestatus[i-1][j]=0;
+			poly->colhingeedges[i-1][j]=0;
 
-			curwalks[curlength-1][num_walks-1] = 0;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 0;
 			curlength--;
 		}
 	}
 	if(i<M){
-		if(hingestatus[i+1][j]==0){
-			hingestatus[i+1][j]=1;
+		if(poly->hingestatus[i+1][j]==0){
+			poly->hingestatus[i+1][j]=1;
 
 			curlength++;
-			curwalks[curlength-1][num_walks-1] = 5;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 5;
 
 			(*pointordNum)[2]++;	/* count the edge in the hinge */
 						/* if there is ever a need to record the actual configuration of */
 						/* the hinge this would be an appropriate place to do so */
-			colhingeedges[i][j]=1;
-			leavehinge(i+1, j, 0, pointordNum, curlength);
+			poly->colhingeedges[i][j]=1;
+			leavehinge(poly, i+1, j, 0, pointordNum, curlength);
 				/* exit the hinge on side 0 with j moved*/
-			leavehinge(i+1, j, 1, pointordNum, curlength);
+			leavehinge(poly, i+1, j, 1, pointordNum, curlength);
 				/* exit the hinge on side 1 with j moved*/
-			rowedges(i+1, j, pointordNum, curlength);
+			rowedges(poly, i+1, j, pointordNum, curlength);
 				/* explore horizontal moves within the hinge */
-			coledges(i+1, j, pointordNum, curlength);
+			coledges(poly, i+1, j, pointordNum, curlength);
 				/* explore vertical moves within the hinge */
 			(*pointordNum)[2]--;
 				/* decrement the number of edges in the hinge */
-			hingestatus[i+1][j]=0;
-			colhingeedges[i][j]=0;
+			poly->hingestatus[i+1][j]=0;
+			poly->colhingeedges[i][j]=0;
 
-			curwalks[curlength-1][num_walks-1] = 0;
+			poly->curwalks[curlength-1][(*poly->num_walks)-1] = 0;
 			curlength--;
 		}
 	}

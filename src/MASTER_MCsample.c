@@ -155,7 +155,7 @@ void build_transfer_matrix_graph() {
 		for (j = 0; j <= L; j++) {
 			if( !(i==M && j==L) ){
 				printf("2-span: entering at i=%d,j=%d\n", i, j);
-				enterhinge(i, j, side, &ordNum, 0);
+				enterhinge(&primary_polygon_state, i, j, side, &ordNum, 0);
 			}
 			alreadyentered[i][j]=1;
 		}
@@ -464,7 +464,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (mode == 2 || mode == 3) {
-		return run_legacy_2sap_sampler();
+		optind = 1;
+		return mode == 3
+			? run_integrated_2sap_ham_sampler(argc, argv)
+			: run_integrated_2sap_sampler(argc, argv);
 	}
 
 	set_system_params();

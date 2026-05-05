@@ -39,6 +39,21 @@ extern int ham_check;
 extern char* output_dir;
 extern double fval;
 
+typedef struct PolygonState {
+	unsigned int ***ordertemplate;
+	unsigned int ***reordertemplate;
+	unsigned short int **hingestatus;
+	unsigned short int **alreadyentered;
+	unsigned short int **colhingeedges;
+	unsigned short int **rowhingeedges;
+	int **curstart;
+	int **curend;
+	int **curwalks;
+	unsigned int *num_walks;
+} PolygonState;
+
+extern PolygonState primary_polygon_state;
+
 // Structs
 struct hinge_span {	/* This data structure is used to store information about two-spans */
 
@@ -154,14 +169,15 @@ extern unsigned long int filenum;
 // Function prototypes
 void set_system_params();
 void allocate_globals();
-int run_legacy_2sap_sampler(void);
+int run_integrated_2sap_sampler(int argc, char *argv[]);
+int run_integrated_2sap_ham_sampler(int argc, char *argv[]);
 void generate_evectors();
 void conv_to_array(void);
 void conv_endhinges_to_array(void);
-void enterhinge(int i, int j, int side, int (*pointordNum)[3], int curlength);
-void leavehinge(int i, int j, int side, int (*pointordNum)[3], int curlength);
-void rowedges(int i, int j, int (*pointordNum)[3], int curlength);
-void coledges(int i, int j, int (*pointordNum)[3], int curlength);
+void enterhinge(PolygonState *poly, int i, int j, int side, int (*pointordNum)[3], int curlength);
+void leavehinge(PolygonState *poly, int i, int j, int side, int (*pointordNum)[3], int curlength);
+void rowedges(PolygonState *poly, int i, int j, int (*pointordNum)[3], int curlength);
+void coledges(PolygonState *poly, int i, int j, int (*pointordNum)[3], int curlength);
 void recordtemplate( int (*pointordNum)[3]);
 void enterendhinge(int i, int j, int curlength);
 void leaveendhinge(int i, int j, int curlength);

@@ -6,6 +6,7 @@
 struct hinge_span **first_hinge_span, **current_hinge_span;
 struct endhinge **firstendhinge;
 struct endhinge **currentendhinge;
+PolygonState primary_polygon_state;
 
 unsigned int ***ordertemplate;
 unsigned long int num_2_spans = 1;
@@ -151,4 +152,15 @@ void allocate_globals() {
     built_walks_start = allocate_2d_int(vM * vL / 2 + 1, 3);
     built_walks_end = allocate_2d_int(vM * vL / 2 + 1, 3);
     built_walks_direcs = allocate_2d_int(vM * vL / 2 + 1, vM * vL * (totalspan + 1) + 1);
+
+    primary_polygon_state.ordertemplate = ordertemplate;
+    primary_polygon_state.reordertemplate = reordertemplate;
+    primary_polygon_state.hingestatus = hingestatus;
+    primary_polygon_state.alreadyentered = alreadyentered;
+    primary_polygon_state.colhingeedges = colhingeedges;
+    primary_polygon_state.rowhingeedges = rowhingeedges;
+    primary_polygon_state.curstart = curstart;
+    primary_polygon_state.curend = curend;
+    primary_polygon_state.curwalks = curwalks;
+    primary_polygon_state.num_walks = &num_walks;
 }
