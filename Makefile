@@ -30,13 +30,14 @@ CREATOR_SRC = $(SRCDIR)/MASTER_CreatorAll.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/m
               $(SRCDIR)/mc_builder.c $(SRCDIR)/mc_utils.c \
               $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
               $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c
+MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard deps/mc_compat/*/*.c)
 
 # Object files
 TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
 CREATOR_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.creator.o, $(CREATOR_SRC))
 
-.PHONY: all clean tm sampler creator test verify parity-audit directories
+.PHONY: all clean tm sampler creator test verify parity-audit postprocess-test directories
 
 all: directories $(TM_OUT) $(MC_OUT) $(CREATOR_OUT)
 
@@ -64,10 +65,10 @@ $(CREATOR_OUT): $(CREATOR_OBJS)
 	$(CC) $(CREATOR_OBJS) -o $@ $(MC_CFLAGS)
 
 # Compile MC objects
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_sampler_weights.h
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_sampler_weights.h $(MC_INCLUDED_SRC)
 	$(CC) -c $< -o $@ $(MC_CFLAGS)
 
-$(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h
+$(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(MC_INCLUDED_SRC)
 	$(CC) -c $< -o $@ $(MC_CFLAGS)
 
 clean:
@@ -85,3 +86,6 @@ verify: directories $(TM_OUT)
 
 parity-audit: all
 	python3 scripts/parity_audit.py --no-build
+
+postprocess-test:
+	python3 scripts/postprocess_smoke.py

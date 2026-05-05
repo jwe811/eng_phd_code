@@ -7,32 +7,32 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #endif
-#include "../deps/archive/topology/LFlag_norder2.c"
-#include "../deps/archive/topology/LFlag_endhinge_norder2.c"
+#include "../deps/mc_compat/topology/LFlag_norder2.c"
+#include "../deps/mc_compat/topology/LFlag_endhinge_norder2.c"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
 
-#include "../deps/archive/utils/noncrossing.c"
+#include "../deps/mc_compat/utils/noncrossing.c"
 #undef num_section
 #define num_section MC2_NAME(num_section_0V)
-#include "../deps/archive/sections/cstatenum.c"
+#include "../deps/mc_compat/sections/cstatenum.c"
 #undef num_section
 
 #define num_section MC2_NAME(num_section_6V)
-#include "../deps/archive/sections/Num_section_6V.c"
+#include "../deps/mc_compat/sections/Num_section_6V.c"
 #undef num_section
 
 #define num_section MC2_NAME(num_section_8V)
-#include "../deps/archive/sections/Num_section_8V.c"
+#include "../deps/mc_compat/sections/Num_section_8V.c"
 #undef num_section
 
 #define num_section MC2_NAME(num_section_10V)
-#include "../deps/archive/sections/Num_section_10V.c"
+#include "../deps/mc_compat/sections/Num_section_10V.c"
 #undef num_section
 
 #define num_section MC2_NAME(num_section_12V)
-#include "../deps/archive/sections/Num_section_12V.c"
+#include "../deps/mc_compat/sections/Num_section_12V.c"
 #undef num_section
 
 
@@ -48,10 +48,10 @@
 #define num_section_endhinge_norder2 MC2_NAME(num_section_endhinge_norder2_6V)
 #define num_section_endhinge_norder3 MC2_NAME(num_section_endhinge_norder3_6V)
 #define num_section_endhinge_norder4 MC2_NAME(num_section_endhinge_norder4_6V)
-#include "../deps/archive/sections/Num_section_6V_nonordered.c"
-#include "../deps/archive/sections/Num_section_6V_nonordered2.c"
-#include "../deps/archive/sections/Num_section_6V_endhinge_nonordered.c"
-#include "../deps/archive/sections/Num_section_6V_endhinge_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_6V_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_6V_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_6V_endhinge_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_6V_endhinge_nonordered2.c"
 #undef num_section_norder
 #undef num_section_norder2
 #undef num_section_endhinge_norder
@@ -65,10 +65,10 @@
 #define num_section_endhinge_norder2 MC2_NAME(num_section_endhinge_norder2_8V)
 #define num_section_endhinge_norder3 MC2_NAME(num_section_endhinge_norder3_8V)
 #define num_section_endhinge_norder4 MC2_NAME(num_section_endhinge_norder4_8V)
-#include "../deps/archive/sections/Num_section_8V_nonordered.c"
-#include "../deps/archive/sections/Num_section_8V_nonordered2.c"
-#include "../deps/archive/sections/Num_section_8V_endhinge_nonordered.c"
-#include "../deps/archive/sections/Num_section_8V_endhinge_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_8V_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_8V_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_8V_endhinge_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_8V_endhinge_nonordered2.c"
 #undef num_section_norder
 #undef num_section_norder2
 #undef num_section_endhinge_norder
@@ -82,10 +82,10 @@
 #define num_section_endhinge_norder2 MC2_NAME(num_section_endhinge_norder2_10V)
 #define num_section_endhinge_norder3 MC2_NAME(num_section_endhinge_norder3_10V)
 #define num_section_endhinge_norder4 MC2_NAME(num_section_endhinge_norder4_10V)
-#include "../deps/archive/sections/Num_section_10V_nonordered.c"
-#include "../deps/archive/sections/Num_section_10V_nonordered2.c"
-#include "../deps/archive/sections/Num_section_10V_endhinge_nonordered.c"
-#include "../deps/archive/sections/Num_section_10V_endhinge_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_10V_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_10V_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_10V_endhinge_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_10V_endhinge_nonordered2.c"
 #undef num_section_norder
 #undef num_section_norder2
 #undef num_section_endhinge_norder
@@ -99,9 +99,9 @@
 #define num_section_endhinge_norder2 MC2_NAME(num_section_endhinge_norder2_12V)
 #define num_section_endhinge_norder3 MC2_NAME(num_section_endhinge_norder3_12V)
 #define num_section_endhinge_norder4 MC2_NAME(num_section_endhinge_norder4_12V)
-#include "../deps/archive/sections/Num_section_12V_nonordered.c"
-#include "../deps/archive/sections/Num_section_12V_nonordered2.c"
-#include "../deps/archive/sections/Num_section_12V_endhinge_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_12V_nonordered.c"
+#include "../deps/mc_compat/sections/Num_section_12V_nonordered2.c"
+#include "../deps/mc_compat/sections/Num_section_12V_endhinge_nonordered.c"
 #undef num_section_norder
 #undef num_section_norder2
 #undef num_section_endhinge_norder
@@ -193,14 +193,14 @@ unsigned long int MC2_NAME(num_section_endhinge_norder4)(void) {
 
 #undef num_section
 #define num_section MC2_NAME(num_section)
-#include "../deps/archive/sections/printsection.c"
+#include "../deps/mc_compat/sections/printsection.c"
 #undef num_section
 
-#include "../deps/archive/utils/int_vecalloc.c"
-#include "../deps/archive/utils/unsgn_vecalloc.c"
+#include "../deps/mc_compat/utils/int_vecalloc.c"
+#include "../deps/mc_compat/utils/unsgn_vecalloc.c"
 
-#include "../deps/archive/utils/unsgnlong_vecalloc.c"
+#include "../deps/mc_compat/utils/unsgnlong_vecalloc.c"
 
-#include "../deps/archive/utils/vecalloc.c"
+#include "../deps/mc_compat/utils/vecalloc.c"
 
-#include "../deps/archive/utils/matalloc.c"
+#include "../deps/mc_compat/utils/matalloc.c"

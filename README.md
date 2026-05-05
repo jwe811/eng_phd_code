@@ -68,6 +68,7 @@ make creator      # Build only bin/creator_all
 make test         # Run scripts/audit_engine.py for a small TM case
 make verify       # Run transfer-matrix benchmark table
 make parity-audit # Run TM and MC parity checks
+make postprocess-test # Run smoke tests for revived post-processing tools
 make clean        # Remove build artifacts and generated data subtrees
 ```
 
@@ -308,8 +309,63 @@ Additional checks:
 
 ```bash
 make verify
+make postprocess-test
 python3 scripts/audit_engine.py -L 2 -M 1 -m 0
 ```
+
+## Post-Processing Tools
+
+Archive post-processing workflows have been revived as importable Python modules
+under `postprocess/` and command-line tools under `scripts/`.
+
+### UofS File Tools
+
+`scripts/uofs_tool.py` handles file conversion, validation, counting,
+canonicalization, deduplication, and contact maps.
+
+Examples:
+
+```bash
+python3 scripts/uofs_tool.py summary data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+python3 scripts/uofs_tool.py validate data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt -L 1 -M 1 -s 2
+python3 scripts/uofs_tool.py to-points data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/saps_points.txt
+python3 scripts/uofs_tool.py to-lp data/MonteCarlo/2SAPs/MC2SAPsL2M1span2run303num1.txt /tmp/links_lp.txt -p 2
+python3 scripts/uofs_tool.py unique data/CreatorAll/All_2SAPs/All2SAPsL2M1span2num1.txt -p 2 --unordered
+python3 scripts/uofs_tool.py contacts data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt -r 1.0
+```
+
+For 2SAP files, pass `-p 2` so two consecutive UofS polygons are treated as one
+object. The revived tools default to this repo's generated UofS convention:
+span on `x`, lattice width `L` on `y`, and lattice height `M` on `z`. Use
+`--span-axis z` for older files that use `z` as the tube direction.
+
+### Spectral Tools
+
+`scripts/spectral_tool.py` provides standalone audits over exported CSR matrices
+and eigenvectors:
+
+```bash
+bin/tm_master -L 2 -M 1 -m 2
+python3 scripts/spectral_tool.py audit -L 2 -M 1 -m 2 -x 0.653914
+python3 scripts/spectral_tool.py transition-check -L 2 -M 1 -m 2 -x 0.653914 --limit 10
+```
+
+### Topology Tools
+
+`scripts/topology_tool.py` revives the archive's BFACF-shrink-style
+knot/unknot workflow and label-file utilities:
+
+```bash
+python3 scripts/topology_tool.py shrink-id data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/shrink_ids.txt
+python3 scripts/topology_tool.py shrink-lengths data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+python3 scripts/topology_tool.py tally-labels /tmp/shrink_ids.txt
+python3 scripts/topology_tool.py split-by-label data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/shrink_ids.txt /tmp/split_by_label
+python3 scripts/topology_tool.py linking-number data/CreatorAll/All_2SAPs/All2SAPsL2M1span2num1.txt --keep-going
+```
+
+The shrink classifier is deterministic by default and intentionally conservative:
+objects that do not shrink below the archive threshold are labeled
+`knot_or_unresolved`.
 
 ## Source Layout
 
@@ -333,13 +389,23 @@ include/
   mc_sampler_weights.h     Sampler weight interface
 
 deps/
-  archive/                 Archival source used for parity reference
-  topology/, utils/        Legacy helper code still included by the engines
+  topology/, utils/        Topology and allocation helpers used by the engines
+  mc_compat/               Legacy-compatible helper code included by MC
 
 scripts/
   parity_audit.py          Automated TM and MC parity suite
   audit_engine.py          CSR/eigenvector consistency audit
+  uofs_tool.py             UofS conversion, validation, counting, and contacts
+  spectral_tool.py         CSR/eigenvector post-processing audits
+  topology_tool.py         BFACF shrink labels and label-file utilities
   verify_all.sh            TM benchmark table
+
+postprocess/
+  uofs.py                  Shared UofS/LP parser, writer, validator
+  analysis.py              Edge/span/contact analyses
+  spectral.py              CSR/eigenvector audit helpers
+  bfacf.py                 BFACF-style shrink heuristic
+  topology.py              Linking-number helpers
 ```
 
 ## Architecture Notes
