@@ -50,6 +50,12 @@ static void *mc2sap_xcalloc(size_t count, size_t size, const char *label)
     return ptr;
 }
 
+static void ignore_system_result(const char *command)
+{
+    int status = system(command);
+    (void)status;
+}
+
 
 #define MAX_vM 5
 #define MAX_vL 5
@@ -701,8 +707,8 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 /**** start of main program ***********************************************/
 /**************************************************************************/
 
-	system("clear"); /* clears the screen */
-	system("date");  /* prints the date and time */
+	ignore_system_result("clear"); /* clears the screen */
+	ignore_system_result("date");  /* prints the date and time */
 
 	printf("section-section version\n");
 
@@ -1322,7 +1328,7 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 
 
 
-	system("date");  /* prints the date and time */
+	ignore_system_result("date");  /* prints the date and time */
 	printf("\nProgram Complete.\n\n");
 
 	return 0;
@@ -2660,6 +2666,8 @@ mc2_recordtemplate( int (*pointordNum)[6])
 /* This function records the pertinent information about a two-span */
 /* which has been verified as being valid into a linked list */
 {
+
+	(void)pointordNum;
 
 	int i,j;
 

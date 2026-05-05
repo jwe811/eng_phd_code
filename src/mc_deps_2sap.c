@@ -3,10 +3,18 @@
 #define MC2_NAME(name) name
 #endif
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#endif
 #include "../deps/archive/topology/LFlag_norder2.c"
 #include "../deps/archive/topology/LFlag_endhinge_norder2.c"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "../deps/archive/utils/noncrossing.c"
+#undef num_section
 #define num_section MC2_NAME(num_section_0V)
 #include "../deps/archive/sections/cstatenum.c"
 #undef num_section
@@ -28,6 +36,12 @@
 #undef num_section
 
 
+#undef num_section_norder
+#undef num_section_norder2
+#undef num_section_endhinge_norder
+#undef num_section_endhinge_norder2
+#undef num_section_endhinge_norder3
+#undef num_section_endhinge_norder4
 #define num_section_norder MC2_NAME(num_section_norder_6V)
 #define num_section_norder2 MC2_NAME(num_section_norder2_6V)
 #define num_section_endhinge_norder MC2_NAME(num_section_endhinge_norder_6V)
@@ -177,7 +191,10 @@ unsigned long int MC2_NAME(num_section_endhinge_norder4)(void) {
     exit(1);
 }
 
+#undef num_section
+#define num_section MC2_NAME(num_section)
 #include "../deps/archive/sections/printsection.c"
+#undef num_section
 
 #include "../deps/archive/utils/int_vecalloc.c"
 #include "../deps/archive/utils/unsgn_vecalloc.c"
