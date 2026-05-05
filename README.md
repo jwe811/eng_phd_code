@@ -418,6 +418,7 @@ include/
 
 deps/
   topology/, utils/        Topology and allocation helpers used by the engines
+  numerics/                Small numerical routines shared by engine code
   mc_compat/               Legacy-compatible helper code included by MC
 
 scripts/

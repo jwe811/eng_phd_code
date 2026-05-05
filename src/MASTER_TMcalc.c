@@ -200,7 +200,7 @@ static unsigned long int get_or_add_current_section(int poly, int side) {
 #include "../deps/utils/qcksrtII_int.c"
 #pragma GCC diagnostic pop
 #define M QM
-#include "../deps/analysis/statistics/rtflsp.c"
+#include "../deps/numerics/rtflsp.c"
 
 /* ==========================================================================
    CORE ENGINE
