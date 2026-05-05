@@ -47,9 +47,9 @@ double generate_evectors() {
 	   depend on stale files. */
 	char r_filename[100];
 	if (ham_check) {
-		checked_snprintf(r_filename, sizeof(r_filename), "data/MC_Evectors/R_EvectorHam_TS_L%dM%d.txt", L, M);
+		checked_snprintf(r_filename, sizeof(r_filename), "data/MonteCarlo/MC_Evectors/R_EvectorHam_TS_L%dM%d.txt", L, M);
 	} else {
-		checked_snprintf(r_filename, sizeof(r_filename), "data/MC_Evectors/R_Evector_TS_L%dM%d.txt", L, M);
+		checked_snprintf(r_filename, sizeof(r_filename), "data/MonteCarlo/MC_Evectors/R_Evector_TS_L%dM%d.txt", L, M);
 	}
 
 	FILE *r_fp = fopen(r_filename, "r");
@@ -72,12 +72,14 @@ double generate_evectors() {
 	}
 
 	/* Keep the traditional file output for parity audits and external scripts. */
-	ensure_directory("data/MC_Evectors");
+	ensure_directory("data");
+	ensure_directory("data/MonteCarlo");
+	ensure_directory("data/MonteCarlo/MC_Evectors");
 	char export_fn[100];
 	if (ham_check) {
-		checked_snprintf(export_fn, sizeof(export_fn), "data/MC_Evectors/R_EvectorHam_TS_L%dM%d.txt", L, M);
+		checked_snprintf(export_fn, sizeof(export_fn), "data/MonteCarlo/MC_Evectors/R_EvectorHam_TS_L%dM%d.txt", L, M);
 	} else {
-		checked_snprintf(export_fn, sizeof(export_fn), "data/MC_Evectors/R_Evector_TS_L%dM%d.txt", L, M);
+		checked_snprintf(export_fn, sizeof(export_fn), "data/MonteCarlo/MC_Evectors/R_Evector_TS_L%dM%d.txt", L, M);
 	}
 	
 	FILE *export_fp = fopen(export_fn, "w");
@@ -357,6 +359,7 @@ void run_rejection_sampler() {
 
 	const char *file_prefix = (ham_check) ? "MCpolysHam" : "MCpolys";
 	ensure_directory("data");
+	ensure_directory("data/MonteCarlo");
 	ensure_directory(output_dir);
 	checked_snprintf(filename, sizeof(filename), "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
 
@@ -579,10 +582,10 @@ int main(int argc, char *argv[]) {
 	set_system_params();
 	allocate_globals();
 
-	if (mode == 1) output_dir = "data/HamSAPs";
-	else if (mode == 2) output_dir = "data/2SAPs";
-	else if (mode == 3) output_dir = "data/Ham2SAPs";
-	else output_dir = "data/SAPs";
+	if (mode == 1) output_dir = "data/MonteCarlo/HamSAPs";
+	else if (mode == 2) output_dir = "data/MonteCarlo/2SAPs";
+	else if (mode == 3) output_dir = "data/MonteCarlo/Ham2SAPs";
+	else output_dir = "data/MonteCarlo/SAPs";
 
 	unsigned int seed=seednum;
 	initran_(&seed);

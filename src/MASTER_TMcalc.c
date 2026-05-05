@@ -580,13 +580,15 @@ void export_eigenvectors(void) {
     const char *mode_suffixes[] = {"std", "ham", "2sap", "2sap_ham"};
     const char *suffix = (mode >= 0 && mode <= 3) ? mode_suffixes[mode] : "unk";
 
-    ensure_directory("data/TMresults");
+    ensure_directory("data");
+    ensure_directory("data/TransferMatrix");
+    ensure_directory("data/TransferMatrix/TMresults");
     
     if (sampling_export) {
         char fn[128];
         const char *mc_prefix = (mode == 2 || mode == 3) ? "2SAP_" : "";
         const char *mc_ham = (mode == 1 || mode == 3) ? "Ham" : "";
-        checked_snprintf(fn, sizeof(fn), "data/TMresults/%sR_Evector%s_TS_L%dM%d.txt", mc_prefix, mc_ham, lat_L, lat_M);
+        checked_snprintf(fn, sizeof(fn), "data/TransferMatrix/TMresults/%sR_Evector%s_TS_L%dM%d.txt", mc_prefix, mc_ham, lat_L, lat_M);
         
         FILE *fp = xfopen(fn, "w");
         
@@ -607,8 +609,8 @@ void export_eigenvectors(void) {
     }
 
     char fn1[100], fn2[100];
-    checked_snprintf(fn1, sizeof(fn1), "data/TMresults/L_Evector_L%dM%d_%s.txt", lat_L, lat_M, suffix);
-    checked_snprintf(fn2, sizeof(fn2), "data/TMresults/R_Evector_L%dM%d_%s.txt", lat_L, lat_M, suffix);
+    checked_snprintf(fn1, sizeof(fn1), "data/TransferMatrix/TMresults/L_Evector_L%dM%d_%s.txt", lat_L, lat_M, suffix);
+    checked_snprintf(fn2, sizeof(fn2), "data/TransferMatrix/TMresults/R_Evector_L%dM%d_%s.txt", lat_L, lat_M, suffix);
     FILE *fp1 = xfopen(fn1, "w"), *fp2 = xfopen(fn2, "w");
     for(unsigned long int i=1; i<=actual_max_states; i++) { fprintf(fp1, "%.15f\n", L_Evector[0][i]); fprintf(fp2, "%.15f\n", R_Evector[0][i]); }
     fclose(fp1); fclose(fp2);
@@ -618,8 +620,10 @@ void export_matrix(void) {
     const char *mode_suffixes[] = {"std", "ham", "2sap", "2sap_ham"};
     const char *suffix = (mode >= 0 && mode <= 3) ? mode_suffixes[mode] : "unk";
     char fn[100];
-    ensure_directory("data/TMresults");
-    checked_snprintf(fn, sizeof(fn), "data/TMresults/CSR_L%dM%d_%s.bin", lat_L, lat_M, suffix);
+    ensure_directory("data");
+    ensure_directory("data/TransferMatrix");
+    ensure_directory("data/TransferMatrix/TMresults");
+    checked_snprintf(fn, sizeof(fn), "data/TransferMatrix/TMresults/CSR_L%dM%d_%s.bin", lat_L, lat_M, suffix);
     FILE *fp = xfopen(fn, "wb");
     unsigned long int total_transitions = csr_row_ptr[actual_max_states + 1];
     checked_fwrite(&actual_max_states, sizeof(unsigned long int), 1, fp, "state count");

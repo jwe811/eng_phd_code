@@ -74,7 +74,7 @@ MC_BENCHMARKS = (
         eigen_tolerance=1e-14,
         reject_first=0,
         reject_last=1,
-        output_path="data/SAPs/MCpolysL1M1span2run301num1.txt",
+        output_path="data/MonteCarlo/SAPs/MCpolysL1M1span2run301num1.txt",
         output_sha256="610f5528c6f5f2dd520056cf62404a1be49a52de4d9867aba12cadb5b4fcb9e2",
     ),
     MonteCarloBenchmark(
@@ -90,7 +90,7 @@ MC_BENCHMARKS = (
         eigen_tolerance=1e-6,
         reject_first=0,
         reject_last=0,
-        output_path="data/HamSAPs/MCpolysHamL1M1span2run302num1.txt",
+        output_path="data/MonteCarlo/HamSAPs/MCpolysHamL1M1span2run302num1.txt",
         output_sha256="9c856b6f7816fb88a0e4658d8e2d6bfaf378ebdd580dc962bdec0ada6f58fecc",
     ),
     MonteCarloBenchmark(
@@ -106,7 +106,7 @@ MC_BENCHMARKS = (
         eigen_tolerance=5e-14,
         reject_first=2,
         reject_last=3,
-        output_path="data/2SAPs/MC2SAPsL2M1span2run303num1.txt",
+        output_path="data/MonteCarlo/2SAPs/MC2SAPsL2M1span2run303num1.txt",
         output_sha256="06b3ccf6b7b4d8b9a58fa1fd51a292bfdde170d891063d359a0169189ad5370f",
     ),
     MonteCarloBenchmark(
@@ -122,7 +122,7 @@ MC_BENCHMARKS = (
         eigen_tolerance=5e-14,
         reject_first=3,
         reject_last=3,
-        output_path="data/Ham2SAPs/MC2SAPsHamL2M1span2run304num1.txt",
+        output_path="data/MonteCarlo/Ham2SAPs/MC2SAPsHamL2M1span2run304num1.txt",
         output_sha256="11726d6423c1213a180af142e0ef9ec466119279d75b02743a4d84deb53bc617",
     ),
 )

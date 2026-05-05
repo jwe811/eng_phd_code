@@ -15,6 +15,11 @@ typedef struct CreatorOptions {
 typedef struct CreatorContext {
 	FILE *fp;
 	unsigned long int total;
+	unsigned long int file_total;
+	unsigned long int file_num;
+	char outdir[160];
+	char prefix[64];
+	char last_path[240];
 	unsigned long int *sequence_sections;
 	int *sequence_nths;
 } CreatorContext;
@@ -167,6 +172,52 @@ static void print_current_sap(FILE *out)
 	fprintf(out, "-111\n");
 }
 
+static void creator_open_next_file(CreatorContext *ctx)
+{
+	if (ctx->fp) {
+		fprintf(ctx->fp, "-999\n");
+		fclose(ctx->fp);
+		ctx->fp = NULL;
+	}
+	checked_snprintf(ctx->last_path, sizeof(ctx->last_path), "%s/%sL%dM%dspan%dnum%lu.txt",
+		ctx->outdir, ctx->prefix, L, M, totalspan, ctx->file_num);
+	ctx->fp = fopen(ctx->last_path, "w");
+	if (!ctx->fp) {
+		fprintf(stderr, "Fatal: could not open '%s': %s\n", ctx->last_path, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	fprintf(ctx->fp, "UofS\n");
+	ctx->file_total = 0;
+}
+
+static void creator_prepare_write(CreatorContext *ctx, const char *outdir, const char *prefix)
+{
+	checked_snprintf(ctx->outdir, sizeof(ctx->outdir), "%s", outdir);
+	checked_snprintf(ctx->prefix, sizeof(ctx->prefix), "%s", prefix);
+	ctx->file_num = 1;
+	creator_open_next_file(ctx);
+}
+
+static void creator_finish_write(CreatorContext *ctx)
+{
+	if (ctx->fp) {
+		fprintf(ctx->fp, "-999\n");
+		fclose(ctx->fp);
+		ctx->fp = NULL;
+	}
+}
+
+static void creator_write_current_sap(CreatorContext *ctx)
+{
+	if (!ctx->fp) return;
+	if (ctx->file_total >= (unsigned long int)maxpolys) {
+		ctx->file_num++;
+		creator_open_next_file(ctx);
+	}
+	print_current_sap(ctx->fp);
+	ctx->file_total++;
+}
+
 static void build_and_maybe_print_sap(
 	CreatorContext *ctx,
 	unsigned long int left_section,
@@ -185,9 +236,7 @@ static void build_and_maybe_print_sap(
 	terminal_section = t_outsection[ctx->sequence_sections[sequence_len - 1]][ctx->sequence_nths[sequence_len - 1]];
 	add_right_endhinge(terminal_section, right_endhinge);
 
-	if (ctx->fp) {
-		print_current_sap(ctx->fp);
-	}
+	creator_write_current_sap(ctx);
 	ctx->total++;
 }
 
@@ -215,14 +264,14 @@ static void enumerate_sap_paths(
 	}
 }
 
-static unsigned long int enumerate_saps(FILE *out)
+static unsigned long int enumerate_saps(CreatorContext *write_ctx)
 {
 	CreatorContext ctx;
 	unsigned long int section;
 	int left;
 
 	memset(&ctx, 0, sizeof(ctx));
-	ctx.fp = out;
+	if (write_ctx) ctx = *write_ctx;
 	ctx.sequence_sections = mc_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_sections), "creator section sequence");
 	ctx.sequence_nths = mc_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_nths), "creator transition sequence");
 
@@ -234,6 +283,13 @@ static unsigned long int enumerate_saps(FILE *out)
 
 	free(ctx.sequence_sections);
 	free(ctx.sequence_nths);
+	if (write_ctx) {
+		write_ctx->fp = ctx.fp;
+		write_ctx->total = ctx.total;
+		write_ctx->file_total = ctx.file_total;
+		write_ctx->file_num = ctx.file_num;
+		memcpy(write_ctx->last_path, ctx.last_path, sizeof(write_ctx->last_path));
+	}
 	return ctx.total;
 }
 
@@ -327,6 +383,17 @@ static void build_transfer_matrix_graph(void)
 static const char *mode_dir_name(void)
 {
 	switch (mode) {
+		case 0: return "All_SAPs";
+		case 1: return "All_HamSAPs";
+		case 2: return "All_2SAPs";
+		case 3: return "All_Ham2SAPs";
+		default: return "All_Unknown";
+	}
+}
+
+static const char *mode_file_label(void)
+{
+	switch (mode) {
 		case 0: return "SAPs";
 		case 1: return "HamSAPs";
 		case 2: return "2SAPs";
@@ -338,8 +405,8 @@ static const char *mode_dir_name(void)
 static int run_sap_creator(const CreatorOptions *options)
 {
 	char outdir[160];
-	char outfile[240];
-	FILE *out;
+	char prefix[64];
+	CreatorContext write_ctx;
 	unsigned long int count;
 
 	ham_check = (mode == 1);
@@ -359,20 +426,15 @@ static int run_sap_creator(const CreatorOptions *options)
 	ensure_directory("data/CreatorAll");
 	checked_snprintf(outdir, sizeof(outdir), "data/CreatorAll/%s", mode_dir_name());
 	ensure_directory(outdir);
-	checked_snprintf(outfile, sizeof(outfile), "%s/All%sL%dM%dspan%d.txt", outdir, mode_dir_name(), L, M, totalspan);
+	checked_snprintf(prefix, sizeof(prefix), "All%s", mode_file_label());
 
-	out = fopen(outfile, "w");
-	if (!out) {
-		fprintf(stderr, "Fatal: could not open '%s': %s\n", outfile, strerror(errno));
-		return EXIT_FAILURE;
-	}
-	fprintf(out, "UofS\n");
-	(void)enumerate_saps(out);
-	fprintf(out, "-999\n");
-	fclose(out);
+	memset(&write_ctx, 0, sizeof(write_ctx));
+	creator_prepare_write(&write_ctx, outdir, prefix);
+	(void)enumerate_saps(&write_ctx);
+	creator_finish_write(&write_ctx);
 
-	printf("Generated %lu %s of exact span %d in %dx%d tube.\n", count, mode_dir_name(), totalspan, L, M);
-	printf("Wrote %s\n", outfile);
+	printf("Generated %lu %s of exact span %d in %dx%d tube.\n", count, mode_file_label(), totalspan, L, M);
+	printf("Wrote %lu file(s) under %s, with at most %d entries per file.\n", write_ctx.file_num, outdir, maxpolys);
 	return EXIT_SUCCESS;
 }
 

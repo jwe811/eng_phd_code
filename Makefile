@@ -72,15 +72,15 @@ $(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runti
 
 clean:
 	rm -rf $(BUILDDIR) $(BINDIR)
-	rm -rf data/TMresults data/MC_Evectors data/CreatorAll
+	rm -rf data/TransferMatrix data/MonteCarlo data/CreatorAll
 	rm -f data/*.txt data/*.bin
 
 test: directories $(TM_OUT)
-	@mkdir -p data/TMresults
+	@mkdir -p data/TransferMatrix/TMresults
 	python3 scripts/audit_engine.py -L 1 -M 1 -m 0
 
 verify: directories $(TM_OUT)
-	@mkdir -p data/TMresults
+	@mkdir -p data/TransferMatrix/TMresults
 	bash scripts/verify_all.sh
 
 parity-audit: all

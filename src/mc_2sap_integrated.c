@@ -998,8 +998,9 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 
 
 	mkdir("data", 0775);
-	mkdir("data/2SAPs", 0775);
-	sprintf(mc2_filename, "data/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
+	mkdir("data/MonteCarlo", 0775);
+	mkdir("data/MonteCarlo/2SAPs", 0775);
+	sprintf(mc2_filename, "data/MonteCarlo/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
 	mc2_fp = fopen(mc2_filename, "w");	//create or overwrite the file "mc2_filename"
 
 	if(mc2_fp != NULL){
@@ -1050,9 +1051,10 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
     dom_evalue = calculated_dom_evalue;
 
     mkdir("data", 0775);
-    mkdir("data/MC_Evectors", 0775);
+    mkdir("data/MonteCarlo", 0775);
+    mkdir("data/MonteCarlo/MC_Evectors", 0775);
     char export_fn[128];
-    sprintf(export_fn, "data/MC_Evectors/2SAP_R_Evector%s_TS_L%dM%d.txt", (ham_check ? "Ham" : ""), L, M);
+    sprintf(export_fn, "data/MonteCarlo/MC_Evectors/2SAP_R_Evector%s_TS_L%dM%d.txt", (ham_check ? "Ham" : ""), L, M);
     FILE *export_fp = fopen(export_fn, "w");
     if (export_fp != NULL) {
         for (int i = 1; i <= max_tspans; i++) {
@@ -5545,8 +5547,9 @@ void mc2_printtofile(){
 		fclose(mc2_fp);
 		mc2_filenum++;
 		mkdir("data", 0775);
-	mkdir("data/2SAPs", 0775);
-	sprintf(mc2_filename, "data/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
+	mkdir("data/MonteCarlo", 0775);
+	mkdir("data/MonteCarlo/2SAPs", 0775);
+	sprintf(mc2_filename, "data/MonteCarlo/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
 		mc2_fp = fopen(mc2_filename, "w");	//create or overwrite the file "mc2_filename
 
 		if(mc2_fp != NULL){
@@ -5794,9 +5797,60 @@ static void mc2_creator_print_pair(FILE *out)
 typedef struct Mc2CreatorContext {
 	FILE *fp;
 	unsigned long int total;
+	unsigned long int file_total;
+	unsigned long int file_num;
+	char outdir[160];
+	char prefix[64];
+	char last_path[512];
 	unsigned long int *sequence_sections;
 	int *sequence_nths;
 } Mc2CreatorContext;
+
+static void mc2_creator_open_next_file(Mc2CreatorContext *ctx)
+{
+	if (ctx->fp) {
+		fprintf(ctx->fp, "-999\n");
+		fclose(ctx->fp);
+		ctx->fp = NULL;
+	}
+	snprintf(ctx->last_path, sizeof(ctx->last_path), "%s/%sL%dM%dspan%dnum%lu.txt",
+		ctx->outdir, ctx->prefix, L, M, totalspan, ctx->file_num);
+	ctx->fp = fopen(ctx->last_path, "w");
+	if (!ctx->fp) {
+		fprintf(stderr, "Fatal: could not open '%s': %s\n", ctx->last_path, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	fprintf(ctx->fp, "UofS\n");
+	ctx->file_total = 0;
+}
+
+static void mc2_creator_prepare_write(Mc2CreatorContext *ctx, const char *outdir, const char *prefix)
+{
+	snprintf(ctx->outdir, sizeof(ctx->outdir), "%s", outdir);
+	snprintf(ctx->prefix, sizeof(ctx->prefix), "%s", prefix);
+	ctx->file_num = 1;
+	mc2_creator_open_next_file(ctx);
+}
+
+static void mc2_creator_finish_write(Mc2CreatorContext *ctx)
+{
+	if (ctx->fp) {
+		fprintf(ctx->fp, "-999\n");
+		fclose(ctx->fp);
+		ctx->fp = NULL;
+	}
+}
+
+static void mc2_creator_write_pair(Mc2CreatorContext *ctx)
+{
+	if (!ctx->fp) return;
+	if (ctx->file_total >= (unsigned long int)maxpolys) {
+		ctx->file_num++;
+		mc2_creator_open_next_file(ctx);
+	}
+	mc2_creator_print_pair(ctx->fp);
+	ctx->file_total++;
+}
 
 static void mc2_creator_build_leaf(
 	Mc2CreatorContext *ctx,
@@ -5819,7 +5873,7 @@ static void mc2_creator_build_leaf(
 
 	key = mc2_creator_pair_key();
 	if (mc2_creator_seen_insert(key)) {
-		if (ctx->fp) mc2_creator_print_pair(ctx->fp);
+		mc2_creator_write_pair(ctx);
 		ctx->total++;
 	}
 	free(key);
@@ -5847,14 +5901,14 @@ static void mc2_creator_enumerate_paths(
 	}
 }
 
-static unsigned long int mc2_creator_enumerate(FILE *out)
+static unsigned long int mc2_creator_enumerate(Mc2CreatorContext *write_ctx)
 {
 	Mc2CreatorContext ctx;
 	unsigned long int section;
 	int left;
 
 	memset(&ctx, 0, sizeof(ctx));
-	ctx.fp = out;
+	if (write_ctx) ctx = *write_ctx;
 	ctx.sequence_sections = (unsigned long int *)mc2sap_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_sections), "creator section sequence");
 	ctx.sequence_nths = (int *)mc2sap_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_nths), "creator transition sequence");
 	mc2_creator_seen_clear();
@@ -5866,14 +5920,20 @@ static unsigned long int mc2_creator_enumerate(FILE *out)
 	}
 	free(ctx.sequence_sections);
 	free(ctx.sequence_nths);
+	if (write_ctx) {
+		write_ctx->fp = ctx.fp;
+		write_ctx->total = ctx.total;
+		write_ctx->file_total = ctx.file_total;
+		write_ctx->file_num = ctx.file_num;
+		memcpy(write_ctx->last_path, ctx.last_path, sizeof(write_ctx->last_path));
+	}
 	return ctx.total;
 }
 
 static int mc2_run_creator_all_after_build(void)
 {
 	char outdir[160];
-	char outfile[240];
-	FILE *out;
+	Mc2CreatorContext write_ctx;
 	unsigned long int count;
 
 	if (totalspan < 2) {
@@ -5893,22 +5953,16 @@ static int mc2_run_creator_all_after_build(void)
 
 	mkdir("data", 0775);
 	mkdir("data/CreatorAll", 0775);
-	snprintf(outdir, sizeof(outdir), "data/CreatorAll/2SAPs");
+	snprintf(outdir, sizeof(outdir), "data/CreatorAll/All_2SAPs");
 	mkdir(outdir, 0775);
-	snprintf(outfile, sizeof(outfile), "%s/All2SAPsL%dM%dspan%d.txt", outdir, L, M, totalspan);
-	out = fopen(outfile, "w");
-	if (!out) {
-		fprintf(stderr, "Fatal: could not open '%s': %s\n", outfile, strerror(errno));
-		return EXIT_FAILURE;
-	}
-	fprintf(out, "UofS\n");
-	(void)mc2_creator_enumerate(out);
-	fprintf(out, "-999\n");
-	fclose(out);
+	memset(&write_ctx, 0, sizeof(write_ctx));
+	mc2_creator_prepare_write(&write_ctx, outdir, "All2SAPs");
+	(void)mc2_creator_enumerate(&write_ctx);
+	mc2_creator_finish_write(&write_ctx);
 	mc2_creator_seen_clear();
 
 	printf("Generated %lu unordered 2SAPs of exact span %d in %dx%d tube.\n", count, totalspan, L, M);
-	printf("Wrote %s\n", outfile);
+	printf("Wrote %lu file(s) under %s, with at most %d entries per file.\n", write_ctx.file_num, outdir, maxpolys);
 	return EXIT_SUCCESS;
 }
 

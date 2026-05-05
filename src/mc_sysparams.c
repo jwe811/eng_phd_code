@@ -17,7 +17,7 @@ int vL;
 int CS_mode = 0;
 int mode = 0;
 int ham_check = 0;
-char* output_dir = "data/SAPs";
+char* output_dir = "data/MonteCarlo/SAPs";
 double fval = 0.0;
 
 void set_system_params() {

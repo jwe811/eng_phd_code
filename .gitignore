@@ -6,13 +6,9 @@ generated/
 # Data and results
 data/*.txt
 data/*.bin
-data/SAPs/
-data/HamSAPs/
-data/2SAPs/
-data/Ham2SAPs/
+data/TransferMatrix/
+data/MonteCarlo/
 data/CreatorAll/
-data/TMresults/
-data/MC_Evectors/
 
 # Python cache
 __pycache__/

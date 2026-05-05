@@ -68,12 +68,12 @@ make creator      # Build only bin/creator_all
 make test         # Run scripts/audit_engine.py for a small TM case
 make verify       # Run transfer-matrix benchmark table
 make parity-audit # Run TM and MC parity checks
-make clean        # Remove build artifacts and generated TM/eigenvector data
+make clean        # Remove build artifacts and generated data subtrees
 ```
 
-`make clean` removes `build/`, `bin/`, `data/TMresults`, `data/MC_Evectors`,
-`data/CreatorAll`, and loose `data/*.txt` / `data/*.bin` files. It does not
-remove sampled-output subdirectories such as `data/SAPs` or `data/2SAPs`.
+`make clean` removes `build/`, `bin/`, `data/TransferMatrix`,
+`data/MonteCarlo`, `data/CreatorAll`, and loose `data/*.txt` / `data/*.bin`
+files.
 
 ## Transfer Matrix CLI
 
@@ -235,7 +235,7 @@ Generated files live under `data/`. Directories are created on demand.
 
 ### Transfer Matrix Output
 
-`tm_master` writes transfer-matrix results to `data/TMresults/`:
+`tm_master` writes transfer-matrix results to `data/TransferMatrix/TMresults/`:
 
 - `L_Evector_L<L>M<M>_<mode>.txt`
 - `R_Evector_L<L>M<M>_<mode>.txt`
@@ -260,22 +260,24 @@ format expected by Monte Carlo workflows:
 
 `mc_master` writes sampled polygons in `UofS` format:
 
-- Mode 0: `data/SAPs/MCpolysL<L>M<M>span<S>run<R>num<N>.txt`
-- Mode 1: `data/HamSAPs/MCpolysHamL<L>M<M>span<S>run<R>num<N>.txt`
-- Mode 2: `data/2SAPs/MC2SAPsL<L>M<M>span<S>run<R>num<N>.txt`
-- Mode 3: `data/Ham2SAPs/MC2SAPsHamL<L>M<M>span<S>run<R>num<N>.txt`
+- Mode 0: `data/MonteCarlo/SAPs/MCpolysL<L>M<M>span<S>run<R>num<N>.txt`
+- Mode 1: `data/MonteCarlo/HamSAPs/MCpolysHamL<L>M<M>span<S>run<R>num<N>.txt`
+- Mode 2: `data/MonteCarlo/2SAPs/MC2SAPsL<L>M<M>span<S>run<R>num<N>.txt`
+- Mode 3: `data/MonteCarlo/Ham2SAPs/MC2SAPsHamL<L>M<M>span<S>run<R>num<N>.txt`
 
 The sampler also writes calculated transition-indexed eigenvectors to
-`data/MC_Evectors/` for auditing and reuse.
+`data/MonteCarlo/MC_Evectors/` for auditing and reuse.
 
 ### Exhaustive Creator Output
 
 `creator_all` writes `UofS` files under `data/CreatorAll/<MODE>/`:
 
-- Mode 0: `data/CreatorAll/SAPs/AllSAPsL<L>M<M>span<S>.txt`
-- Mode 1: `data/CreatorAll/HamSAPs/AllHamSAPsL<L>M<M>span<S>.txt`
-- Mode 2: `data/CreatorAll/2SAPs/All2SAPsL<L>M<M>span<S>.txt`
-- Mode 3: `data/CreatorAll/Ham2SAPs/AllHam2SAPsL<L>M<M>span<S>.txt`
+- Mode 0: `data/CreatorAll/All_SAPs/AllSAPsL<L>M<M>span<S>num<N>.txt`
+- Mode 1: `data/CreatorAll/All_HamSAPs/AllHamSAPsL<L>M<M>span<S>num<N>.txt`
+- Mode 2: `data/CreatorAll/All_2SAPs/All2SAPsL<L>M<M>span<S>num<N>.txt`
+- Mode 3: `data/CreatorAll/All_Ham2SAPs/AllHam2SAPsL<L>M<M>span<S>num<N>.txt`
+- Each file contains at most 10,000 objects and uses a `num<N>` suffix:
+  for example, `AllSAPsL1M1span2num1.txt`, `...num2.txt`, and so on.
 
 The terminal output includes the total number of generated SAPs or unordered
 2SAP systems.

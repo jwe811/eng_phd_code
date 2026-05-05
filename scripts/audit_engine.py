@@ -64,9 +64,9 @@ def audit_full(L, M, mode, x0_code, alpha_code, beta_code):
     mode_suffixes = ["std", "ham", "2sap", "2sap_ham"]
     suffix = mode_suffixes[mode] if 0 <= mode < len(mode_suffixes) else "unk"
     
-    csr_file = f"data/TMresults/CSR_L{L}M{M}_{suffix}.bin"
-    lv_file = f"data/TMresults/L_Evector_L{L}M{M}_{suffix}.txt"
-    rv_file = f"data/TMresults/R_Evector_L{L}M{M}_{suffix}.txt"
+    csr_file = f"data/TransferMatrix/TMresults/CSR_L{L}M{M}_{suffix}.bin"
+    lv_file = f"data/TransferMatrix/TMresults/L_Evector_L{L}M{M}_{suffix}.txt"
+    rv_file = f"data/TransferMatrix/TMresults/R_Evector_L{L}M{M}_{suffix}.txt"
     
     n_states, row_ptr, out_states, edges = read_csr(csr_file)
     eta = read_vector(lv_file) 
