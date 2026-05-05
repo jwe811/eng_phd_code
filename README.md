@@ -29,7 +29,7 @@ The current engines are source-level C. They do not use on-the-fly compilation,
 Build everything:
 
 ```bash
-make clean && make
+make
 ```
 
 Run the full parity check:
@@ -354,12 +354,15 @@ make test             # Run a small CSR/eigenvector audit
 make verify           # Run transfer-matrix benchmark table
 make parity-audit     # Run TM and MC parity checks
 make postprocess-test # Run smoke tests for Python post-processing tools
-make clean            # Remove build artifacts and generated data subtrees
+make clean            # Remove build artifacts only: build/ and bin/
+make clean-data       # Remove generated data output trees
+make distclean        # Remove both build artifacts and generated data
 ```
 
-`make clean` removes `build/`, `bin/`, `data/TransferMatrix`,
-`data/MonteCarlo`, `data/CreatorAll`, and loose `data/*.txt` / `data/*.bin`
-files.
+`make clean` intentionally leaves `data/` alone so research outputs are not
+deleted by accident. Use `make clean-data` when you deliberately want to remove
+`data/TransferMatrix`, `data/MonteCarlo`, `data/CreatorAll`, and loose
+`data/*.txt` / `data/*.bin` files.
 
 The most important regression check is:
 

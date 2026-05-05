@@ -37,7 +37,7 @@ TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
 CREATOR_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.creator.o, $(CREATOR_SRC))
 
-.PHONY: all clean tm sampler creator test verify parity-audit postprocess-test directories
+.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit postprocess-test directories
 
 all: directories $(TM_OUT) $(MC_OUT) $(CREATOR_OUT)
 
@@ -73,8 +73,12 @@ $(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runti
 
 clean:
 	rm -rf $(BUILDDIR) $(BINDIR)
+
+clean-data:
 	rm -rf data/TransferMatrix data/MonteCarlo data/CreatorAll
 	rm -f data/*.txt data/*.bin
+
+distclean: clean clean-data
 
 test: directories $(TM_OUT)
 	@mkdir -p data/TransferMatrix/TMresults
