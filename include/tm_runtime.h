@@ -61,6 +61,8 @@ static void checked_fwrite(const void *ptr, size_t size, size_t count, FILE *fp,
 }
 
 #define SECTION_HASH_SIZE 131072
+/* Section ids are assigned by exact canonical boundary templates. The hash
+   chooses a bucket; template_values is kept so collisions cannot merge states. */
 struct section_hash_node {
     unsigned long int hash;
     unsigned long int section_num;
@@ -107,6 +109,8 @@ static unsigned long int get_or_add_section(
     node->next = section_hash_table[bucket];
     section_hash_table[bucket] = node;
 
+    /* sectionkey is retained for legacy diagnostics/output; exact identity is
+       maintained by section_hash_table above. */
     sectionkey[next_section_num] = section_hash;
     return next_section_num++;
 }

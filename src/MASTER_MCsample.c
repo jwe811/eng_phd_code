@@ -5,6 +5,10 @@
 #include <limits.h>
 #include <stdarg.h>
 
+/* Monte Carlo sampler for modes 0/1. Modes 2/3 dispatch to the integrated
+   2SAP entry points from mc_2sap_*_integrated.c, but they share the same CLI
+   validation, RNG seed handling, and output conventions. */
+
 static void checked_snprintf(char *buffer, size_t size, const char *fmt, ...) {
 	va_list args;
 	int written;
@@ -28,16 +32,19 @@ static void ensure_directory(const char *path) {
 
 double generate_evectors() {
 	printf("Starting integrated spectral solver...\n");
-	double fugacity = 1.0; // Uniform sampling uses eigenvectors at z=1.0
+	double fugacity = 1.0;
 	
-	// The integrated power method uses L_Evector and R_Evector_solve
-	// We need to provide them as expected by pw_meth_ts_LRvec_fcheck.c
+	/* Uniform sampling uses the transition matrix at fugacity x = 1. The
+	   solver writes into the legacy global eigenvector buffers used by the
+	   sampling tables below. */
 	extern double max_eval_LRvec(double fugacity);
 	double calculated_evalue = max_eval_LRvec(fugacity) + 1.0;
 	printf("Calculated dominant eigenvalue: %.15f (Expected: %.15f)\n", calculated_evalue, dom_evalue);
 	dom_evalue = calculated_evalue;
 	
-	// VERIFICATION: Check against archival file if it exists
+	/* If an archival eigenvector file already exists, report numerical drift.
+	   The sampler still uses the freshly computed vector so CLI runs do not
+	   depend on stale files. */
 	char r_filename[100];
 	if (ham_check) {
 		checked_snprintf(r_filename, sizeof(r_filename), "data/MC_Evectors/R_EvectorHam_TS_L%dM%d.txt", L, M);
@@ -64,7 +71,7 @@ double generate_evectors() {
 		printf("No archival file found for verification (%s). Proceeding with calculated values.\n", r_filename);
 	}
 
-	// EXPORT: Save calculated eigenvectors for later use/audit
+	/* Keep the traditional file output for parity audits and external scripts. */
 	ensure_directory("data/MC_Evectors");
 	char export_fn[100];
 	if (ham_check) {
@@ -101,6 +108,8 @@ static int choose_left_conditioned_tspan(unsigned long int section, double accep
 		sampler_fatal_selection("left-conditioned", section, limit, acceptance, prob);
 	}
 
+	/* After accepting a left endhinge, choose the first two-span from the same
+	   section with probability proportional to the destination eigenvector. */
 	sumofprobs = R_Evector_solve[0][t_nrr[section][nth_tspan]] / acceptance;
 	while (sumofprobs < prob && nth_tspan < limit) {
 		nth_tspan++;
@@ -127,6 +136,9 @@ static int choose_middle_tspan(unsigned long int section, unsigned long int curr
 		sampler_fatal_selection("middle", section, limit, total_prob, prob);
 	}
 
+	/* Interior spans are conditioned on the current transition and normalized
+	   by lambda. total_prob is kept for diagnostics because it should be close
+	   to one in a correctly normalized row. */
 	sumofprobs = R_Evector_solve[0][t_nrr[section][nth_tspan]] / denom;
 	while (sumofprobs < prob && nth_tspan < limit) {
 		nth_tspan++;
@@ -191,11 +203,13 @@ void build_transfer_matrix_graph() {
 	int ordNum[3], side = 0;
 	int i, j;
 
-	clock();	/* Start clock to time program */
+	clock();
 
-	ordNum[0] = 1;	/* first edge in section 0 gets numbered 1 (left side of 2-span)	*/
-	ordNum[1] = 1;	/* first edge in section 1 gets numbered 1 (right side of 2-span)	*/
-	ordNum[2] = 0;	/* to start there are no edges in the 2-span (edges in hinge)		*/
+	/* ordNum tracks the current recursive numbering:
+	   [left boundary order, right boundary order, hinge-edge count]. */
+	ordNum[0] = 1;
+	ordNum[1] = 1;
+	ordNum[2] = 0;
 
 	for (i=1; i<=max_sections; i++){
 		current_hinge_span[i] = newhinge(1);		/* free up space of hinge structure */
@@ -243,6 +257,8 @@ void build_transfer_matrix_graph() {
 				printf("2-span: entering at i=%d,j=%d\n", i, j);
 				enterhinge(&primary_polygon_state, i, j, side, &ordNum, 0);
 			}
+			/* Once a start vertex has been tried, later starts skip it so the
+			   same two-span is not rediscovered with a different root. */
 			alreadyentered[i][j]=1;
 		}
 	}
@@ -250,7 +266,9 @@ void build_transfer_matrix_graph() {
 	printf("%lu 2-spans recorded\n", num_tspans);
 	printf("%lu duplicate 2spans\n", num_duplicate_tspans);
 
-	//generate the endhinges
+	/* Endhinges are the left and right caps used to close a sampled sequence of
+	   two-spans into a full polygon. They have their own discovery pass because
+	   they are sampled at the beginning and end of the chain. */
 	num_walks=0;
 	for(i=0; i<=vM*vL-1; i++){
 		for(j=0; j<=2; j++){
@@ -283,7 +301,6 @@ void build_transfer_matrix_graph() {
 	EndOrdNum[0]=1;
 	EndOrdNum[1]=0;
 
-	//create endhinges
 	for (i = 0; i <= M; i++) {
 		for (j = 0; j <= L; j++) {
 			if( !(i==M && j==L) ){
@@ -360,11 +377,12 @@ void run_rejection_sampler() {
 	McSamplerWeightInput weight_input;
 	McSamplerWeights weights;
 
-	// Always calculate eigenvectors at runtime
+	/* Build the spectral data after the transition graph exists, then derive
+	   the rejection envelopes used throughout this sampling run. */
 	generate_evectors();
 
 	double* R_Evector;
-	R_Evector = R_Evector_solve[0]; // Point directly to the calculated global vector
+	R_Evector = R_Evector_solve[0];
 
 	memset(&weight_input, 0, sizeof(weight_input));
 	weight_input.max_sections = max_sections;
@@ -391,6 +409,10 @@ void run_rejection_sampler() {
 	unsigned long int reject_one=0;
 	unsigned long int reject_two=0;
 
+	/* Each accepted polygon is assembled as:
+	   left endhinge -> first two-span -> optional interior two-spans ->
+	   right endhinge. Rejections at the first/last step preserve the target
+	   measure while avoiding per-sample normalization over all endhinges. */
 	while(curSample <= samplesize-1){
 		for(i=0; i<=vM*vL/2-1; i++){
 			for(j=0; j<=2; j++){
@@ -408,6 +430,7 @@ void run_rejection_sampler() {
 		secnum = weights.left_section[chosenLEH];
 		nth_endhinge = weights.left_endhinge[chosenLEH];
 		curLEH = chosenLEH;
+		/* Left rejection uses a precomputed upper bound over all left endhinges. */
 		if( ran1real_() < weights.left_acceptance[curLEH] / weights.max_left_acceptance ){
 			num_built_walks = Lend_num_walks[secnum][nth_endhinge];
 			for(nth_walk=0; nth_walk<=num_built_walks-1; nth_walk++){
@@ -438,6 +461,8 @@ void run_rejection_sampler() {
 					sumofprobs = sumofprobs + R_Evector[t_nrr[sec2][i]] / R_Evector[cur_tspan_num] / dom_evalue;
 				}
 
+				/* The row probability should be one; keep the legacy wide
+				   tolerance because the archival code used the same guard. */
 				if(sumofprobs<0.9 || sumofprobs>1.1){
 					printf("second sumofprobs=%f\n", sumofprobs);
 					printf("problem with second sumofprobs when leaving tspan number %lu, (made up of %lu and %lu)\n", cur_tspan_num, sec1, sec2);
@@ -455,6 +480,8 @@ void run_rejection_sampler() {
 				curspan++;
 			}
 
+			/* Final rejection accounts for the number of right endhinges
+			   available at the terminal section. */
 			if( ran1real_() < weights.right_acceptance[cur_tspan_num] / weights.max_right_acceptance ){
 				if (num_right_endhinges[sec2] == 0) {
 					fprintf(stderr, "Fatal: no right endhinges available for sampled terminal section %lu\n", sec2);
@@ -489,7 +516,8 @@ void run_rejection_sampler() {
 }
 
 void free_sampler_memory() {
-	// Free global dynamic arrays allocated in mc_globals.c
+	/* The process normally exits after one run, but freeing the largest arrays
+	   keeps leak checks useful while refactoring. */
 	int i;
 	if (built_walks_start) {
 		for (i = 0; i < vM * vL / 2 + 1; i++) free(built_walks_start[i]);
@@ -504,7 +532,6 @@ void free_sampler_memory() {
 		free(built_walks_direcs);
 	}
 	
-	// Also free the R_Evector matrix
 	for(i = 0; i <= 1; i++) {
 		if (R_Evector_solve[i]) free(R_Evector_solve[i]);
 		if (L_Evector[i]) free(L_Evector[i]);
@@ -541,6 +568,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (mode == 2 || mode == 3) {
+		/* 2SAP modes have their own integrated samplers because they carry two
+		   polygon states through the discovery and sampling process. */
 		optind = 1;
 		return mode == 3
 			? run_integrated_2sap_ham_sampler(argc, argv)

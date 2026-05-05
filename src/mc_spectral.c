@@ -14,6 +14,9 @@
 #define MC_SPECTRAL_HAM_ACCURACY 0.0000000001
 
 typedef struct McSpectralCsr {
+	/* CSR for the transition-indexed matrix used by the 2SAP Monte Carlo
+	   sampler. Row r represents one two-span transition; columns are the next
+	   transitions reachable from r's output section. */
 	unsigned long int rows;
 	unsigned long int nnz;
 	unsigned long int *row_ptr;
@@ -37,6 +40,8 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 	csr.rows = input->max_tspans;
 	csr.row_ptr = mc_xcalloc(csr.rows + 2, sizeof(*csr.row_ptr), "2SAP spectral CSR row pointers");
 
+	/* Assign rows in the same nested section/nth order used by t_nrr. This is
+	   what keeps eigenvector entries aligned with sampler transition numbers. */
 	for (insection = 1; insection <= input->max_keynum; insection++) {
 		for (nth = 1; nth <= input->num_outsections[insection]; nth++) {
 			unsigned long int outsection = input->tspans_outsection[insection][nth];
@@ -63,6 +68,8 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 	csr.transpose_rows = mc_xcalloc(csr.nnz + 1, sizeof(*csr.transpose_rows), "2SAP spectral transpose CSR rows");
 	csr.transpose_edges = mc_xcalloc(csr.nnz + 1, sizeof(*csr.transpose_edges), "2SAP spectral transpose CSR edges");
 
+	/* Fill the row CSR and count transpose entries. The transition weight is
+	   determined by the edge count of the source two-span. */
 	row = 0;
 	for (insection = 1; insection <= input->max_keynum; insection++) {
 		for (nth = 1; nth <= input->num_outsections[insection]; nth++) {
@@ -118,6 +125,8 @@ static double *build_fugacity_powers(double fugacity, double force, unsigned lon
 	double exp_force = exp(force);
 	double *powers = mc_xmalloc((max_edge + 1) * sizeof(*powers), "2SAP spectral fugacity powers");
 
+	/* force is kept for parity with the archival Hamiltonian solver. In normal
+	   runs it is zero, so this is simply fugacity^edge_count. */
 	for (i = 0; i <= max_edge; i++) {
 		powers[i] = pow(fugacity, i) * exp_force;
 	}
@@ -134,6 +143,8 @@ static void multiply_transition_matrix(
 {
 	unsigned long int row;
 
+	/* Both left and right products are computed in one pass over prepared CSR
+	   layouts. Callers zero the output buffers before each multiply. */
 	#pragma omp parallel for schedule(static)
 	for (row = 1; row <= csr->rows; row++) {
 		unsigned long int pos;
@@ -180,6 +191,8 @@ static double max_eval_regular_2sap(const McTransitionSpectralInput *input, cons
 	printf("\nUsing OpenMP CSR Power Method with fugacity = %f\n\n", fugacity);
 	printf("Iteration     Left eigenvalue     Difference     Right eigenvalue     Difference\n\n");
 
+	/* Regular 2SAP uses max-normalized power iteration, matching the archival
+	   pw_meth_ts_LRvec_fcheck_2SAP.c transition-indexed normalization. */
 	#pragma omp parallel for schedule(static)
 	for (i = 1; i <= input->max_tspans; i++) {
 		left0[i] = 1.0;
@@ -257,6 +270,9 @@ static double max_eval_ham_2sap(const McTransitionSpectralInput *input, const Mc
 
 	printf("\nUsing OpenMP CSR Modified Power Method with fugacity = %f\n\n", fugacity);
 
+	/* Hamiltonian 2SAP can have sign/periodicity issues on odd cross-sections.
+	   The archival method shifts the matrix by a large multiple of the identity
+	   in those cases, then subtracts the shift from the eigenvalue estimate. */
 	#pragma omp parallel for schedule(static)
 	for (i = 1; i <= input->max_tspans; i++) {
 		left0[i] = 1.0;

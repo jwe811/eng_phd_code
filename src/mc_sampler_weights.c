@@ -23,6 +23,8 @@ void mc_sampler_weights_build(const McSamplerWeightInput *input, McSamplerWeight
 	weights->left_endhinge = mc_xcalloc(weights->left_count, sizeof(*weights->left_endhinge), "left endhinge ordinal map");
 	weights->right_acceptance = mc_xcalloc((size_t)input->max_tspans + 1, sizeof(*weights->right_acceptance), "right endhinge acceptance weights");
 
+	/* For a left endhinge in section s, the acceptance envelope is the sum of
+	   destination right-eigenvector weights over every outgoing two-span. */
 	for (section = 1; section <= input->max_sections; section++) {
 		for (nth = 1; nth <= input->num_left_endhinges[section]; nth++) {
 			int out_idx;
@@ -72,6 +74,9 @@ void mc_sampler_weights_build(const McSamplerWeightInput *input, McSamplerWeight
 		exit(EXIT_FAILURE);
 	}
 
+	/* For the final cap, the envelope depends on the chosen transition: it is
+	   the number of right endhinges available at the output section divided by
+	   that transition's eigenvector weight. */
 	for (section = 1; section <= input->max_sections; section++) {
 		for (nth = 1; nth <= input->num_outsections[section]; nth++) {
 			unsigned long int tspan_num = input->t_nrr[section][nth];

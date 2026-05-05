@@ -1,9 +1,15 @@
-/* 
- * transfer_matrix_calculations.c
+/*
+ * Unified transfer-matrix driver for self-avoiding polygon models on an
+ * L-by-M tube. This file owns the combinatorial state generation: it walks all
+ * possible two-span hinge configurations, assigns each boundary connectivity
+ * pattern a compact section id, converts the resulting graph to CSR form, then
+ * hands the numerical eigenvector solve to tm_spectral.c.
  *
- * Consolidated Master File for Transfer Matrix calculations in LxM tubes.
- * Features: State Generation (Hashing), Numerical Solving (CSR/OpenMP),
- * and Runtime CLI Configuration.
+ * Modes:
+ *   0: one SAP, ordinary
+ *   1: one SAP, Hamiltonian
+ *   2: two SAPs on the same lattice, ordinary
+ *   3: two SAPs on the same lattice, Hamiltonian
  */
 
 #include <stdio.h>
@@ -53,7 +59,8 @@ double convergence_threshold = 1e-8;
 double manual_x = -1.0;
 int sampling_export = 0;
 
-/* Memory Scaling and Dynamic Allocation */
+/* Capacity limits are defaults for the generated graph. Large lattices can
+   override them with -S and -K rather than recompiling archival constants. */
 unsigned long int actual_max_sections = 0;
 unsigned long int actual_max_keynum = 0;
 unsigned long int user_max_sections = 0;
@@ -79,11 +86,16 @@ typedef double mat_ent;
    ========================================================================== */
 
 struct hinge_span {
+    /* For one SAP, a transition is "input section -> output section".
+       For 2SAP, a state is the pair (poly A section, poly B section), so
+       inorder2/outorder2 carry polygon B's section ids. */
     unsigned long int inorder2;
     unsigned long int outorder;
     unsigned long int outorder2;
+    /* edgecount values are the powers of fugacity assigned to this transition. */
     unsigned int edgecount;
     unsigned int edgecount2;
+    /* Fast duplicate prefilter; hedges[] remains the exact identity check. */
     unsigned long int hedge_hash;
     unsigned int *hedges;
     struct hinge_span *nexthinge;
@@ -94,6 +106,11 @@ struct hinge_span **current_hinge_span = NULL;
 
 /* ==========================================================================
    GLOBAL VARIABLES (Dynamic)
+
+   ordertemplate stores the raw discovery numbering for boundary hinges.
+   reordertemplate stores the canonical numbering used as the section key.
+   Both are indexed [polygon][side][row][column], where side 0 is the left
+   boundary of a two-span and side 1 is the right boundary.
    ========================================================================== */
 
 unsigned int ****ordertemplate_master = NULL;
@@ -139,7 +156,9 @@ static unsigned long int hash_template_entry(unsigned long int hash, unsigned in
     return hash;
 }
 
-/* Universal Pattern Hasher (FNV-1a) */
+/* FNV-1a hash of the canonical boundary template. Hashes are only a lookup
+   accelerator: tm_runtime.h also stores the full template and compares it on
+   collision, so section identity is exact rather than probabilistic. */
 unsigned long int get_section_hash(int poly, int side) {
     unsigned long int h = 14695981039346656037ULL;
     for(int i=0; i<=lat_M; i++) {
@@ -163,6 +182,8 @@ static unsigned long int copy_and_hash_section_template(int poly, int side, unsi
     return h;
 }
 
+/* Get the stable section id for the current canonical template. The scratch
+   buffer avoids repeated allocations during the recursive state search. */
 static unsigned long int get_or_add_current_section(int poly, int side) {
     unsigned long int section_num;
     unsigned long int section_hash;
@@ -221,6 +242,9 @@ void fillreordertemplate(int poly, int ledges, int redges) {
     }
 }
 
+/* Store one valid two-span transition unless an identical transition was
+   already found. The linked-list form is convenient while recursively
+   discovering states; conv_to_array() later compacts it to CSR. */
 void recordtemplate(int (*pON)[]) {
     unsigned long int inNum = get_or_add_current_section(0, 0);
     unsigned long int outNum = get_or_add_current_section(0, 1);
@@ -236,6 +260,9 @@ void recordtemplate(int (*pON)[]) {
     unsigned int n_edges = pON_raw[0] + pON_raw[2] - 1;
     unsigned int n_edges2 = (num_polys==2) ? (pON_raw[3] + pON_raw[5] - 1) : 0;
     
+    /* hedges[] is positional: every possible hinge edge consumes one slot,
+       and unoccupied edges leave a zero. This preserves the archival identity
+       test for duplicate transitions. */
     unsigned int temp_hedges[MAX_HEDGE];
     for(i=0; i<MAX_HEDGE; i++) temp_hedges[i]=0;
     int idx=0, edgenum=1;
@@ -286,6 +313,8 @@ void recordtemplate(int (*pON)[]) {
     }
 }
 
+/* 2SAP discovery nests polygon B inside each partial polygon A discovery. Both
+   polygons share hingestatus/edge occupancy, but use independent templates. */
 void start_poly2(int (*pON)[]) {
     for (int i=0; i<=lat_M; i++) {
         for (int j=0; j<=lat_L; j++) {
@@ -296,6 +325,9 @@ void start_poly2(int (*pON)[]) {
     for (int i=0; i<=lat_M; i++) for (int j=0; j<=lat_L; j++) alreadyentered[1][i][j]=0;
 }
 
+/* Enter/leave/rowedges/coledges are the recursive state generator. pON holds
+   three counters per polygon: left boundary order, right boundary order, and
+   hinge-edge count. */
 void enterhinge(int i, int j, int side, int poly, int (*pON)[]) {
     if(alreadyentered[poly][i][j]==1 && side==0) return;
     int *pON_raw = (int*)pON;
@@ -341,6 +373,8 @@ void coledges(int i, int j, int poly, int (*pON)[]) {
 }
 
 void allocate_resources(void) {
+    /* These defaults are deliberately generous for audited small lattices.
+       Researchers can raise them at runtime when exploring larger instances. */
     if (user_max_sections > 0) actual_max_sections = user_max_sections;
     else if (lat_L * lat_M == 1) actual_max_sections = 1000;
     else if (lat_L * lat_M == 2) actual_max_sections = 10000;
@@ -399,6 +433,8 @@ struct hash_node {
     struct hash_node *next;
 } *hash_table[HASH_SIZE];
 
+/* In 2SAP mode the spectral matrix state is a pair of one-polygon sections.
+   This map assigns a dense state id to each pair actually encountered. */
 unsigned long int get_composite_key(unsigned long int s1, unsigned long int s2, unsigned long int *pKey) {
     unsigned long int h = (s1 * 31337 + s2) % HASH_SIZE;
     struct hash_node *n = hash_table[h];
@@ -412,6 +448,9 @@ unsigned long int get_composite_key(unsigned long int s1, unsigned long int s2, 
     return *pKey;
 }
 
+/* Convert the generated transition lists to compressed sparse row storage.
+   Arrays are 1-based to match the archival Numerical Recipes-style helpers:
+   row s occupies positions csr_row_ptr[s] + 1 through csr_row_ptr[s + 1]. */
 void conv_to_array(void) {
     unsigned long int i, s, key=0;
     struct hinge_span *curr;
@@ -506,6 +545,8 @@ double get_Beta(double kappa) {
 
 static void find_root_bracket(double (*func)(double), double *x_low, double *x_high)
 {
+    /* The legacy solver expects a bracketed root. Start with the archival
+       interval and expand only when a new lattice/mode falls outside it. */
     const int max_expansions = 24;
     double low = 0.3;
     double high = 0.8;
@@ -554,7 +595,9 @@ void export_eigenvectors(void) {
             unsigned long int row_start = csr_row_ptr[i];
             unsigned long int row_end = csr_row_ptr[i+1];
             for (j = row_start + 1; j <= row_end; j++) {
-                // For each transition i -> j, MC scripts expect R_Evector[trans_num] = V_outstate
+                /* The Monte Carlo sampler is transition-indexed: entry k is
+                   the right eigenvector value of the state reached by
+                   transition k, not of the source state. */
                 fprintf(fp, "%.15f\n", R_Evector[0][csr_out_states[j]]);
             }
         }
@@ -669,7 +712,8 @@ int main(int argc, char **argv) {
     if (mode == 2 || mode == 3) num_polys = 2;
     if (mode == 1 || mode == 3) { ham_check = 1; damping_enabled = 1; }
 
-    /* Validation Logic */
+    /* Validate before allocation so bad command lines fail without creating
+       partial output files. */
     int validation_failed = 0;
     if (lat_L < 0) { fprintf(stderr, "Error: Lattice Width (-L) must be >= 0 (received %d)\n", lat_L); validation_failed = 1; }
     if (lat_M < 0) { fprintf(stderr, "Error: Lattice Height (-M) must be >= 0 (received %d)\n", lat_M); validation_failed = 1; }
@@ -688,8 +732,13 @@ int main(int argc, char **argv) {
     unsigned long int state_idx;
     printf("[Phase 1] Initializing resources and generating state space...\n");
     allocate_resources();
+    /* ordNum is laid out as [poly0 left, poly0 right, poly0 hinge_edges,
+       poly1 left, poly1 right, poly1 hinge_edges]. */
     for (int p=0; p<num_polys; p++) { ordNum[p*3+0]=1; ordNum[p*3+1]=1; ordNum[p*3+2]=0; }
     for (state_idx=1; state_idx<=actual_max_sections; state_idx++) { first_hinge_span[state_idx]=newhinge(); current_hinge_span[state_idx]=first_hinge_span[state_idx]; sectionkey[state_idx]=0; }
+    /* Try every lattice vertex except the upper-right sentinel as the first
+       hinge. alreadyentered prevents generating the same state from an earlier
+       starting vertex. */
     for (i=0; i<=lat_M; i++) for (j=0; j<=lat_L; j++) { if(!(i==lat_M && j==lat_L)) enterhinge(i, j, 0, 0, (int(*)[])&ordNum); alreadyentered[0][i][j]=1; }
     conv_to_array();
     double t_gen = omp_get_wtime();
@@ -725,7 +774,8 @@ int main(int argc, char **argv) {
     double LmultR = 0;
     for(state_idx=1; state_idx<=actual_max_states; state_idx++) LmultR += L_Evector[0][state_idx]*R_Evector[0][state_idx];
 
-    /* Authoritative Thesis Specification Alignment */
+    /* Thesis normalization: scale Beta by the left/right inner product, then
+       derive Alpha from the critical fugacity. */
     double Beta = get_Beta(connectivity_inv) / LmultR;
     double Alpha = connectivity_inv / Beta;
     double t_solve = omp_get_wtime();

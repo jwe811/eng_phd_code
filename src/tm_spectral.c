@@ -44,6 +44,9 @@ static double *build_fugacity_powers(double fugacity, unsigned long int max_edge
 	return powers;
 }
 
+/* Build the transpose once so every power-method iteration can compute the
+   left eigenvector as independent row sums instead of many atomic updates into
+   shared output entries. */
 void tm_spectral_prepare_transpose(TmSpectralProblem *problem)
 {
 	unsigned long int row;
@@ -110,6 +113,7 @@ static void multiply_right(
 {
 	unsigned long int row;
 
+	/* Right multiply: R_new[source] = sum_dest T[source,dest] R_old[dest]. */
 	#pragma omp parallel for schedule(static)
 	for (row = 1; row <= problem->states; row++) {
 		unsigned long int pos;
@@ -131,6 +135,8 @@ static void multiply_left(
 {
 	unsigned long int col;
 
+	/* Left multiply over the transpose: L_new[dest] = sum_source
+	   L_old[source] T[source,dest]. */
 	#pragma omp parallel for schedule(static)
 	for (col = 1; col <= problem->states; col++) {
 		unsigned long int pos;
@@ -151,6 +157,9 @@ double tm_spectral_max_eval(TmSpectralProblem *problem, double fugacity)
 	double L0, L1, R0, R1;
 	double *fug_pow = build_fugacity_powers(fugacity, problem->max_edge);
 
+	/* The transfer weight for a transition with e occupied hinge edges is x^e.
+	   The returned value is lambda - 1 for compatibility with the root finder,
+	   which searches for lambda(x) == 1. */
 	#pragma omp parallel for schedule(static)
 	for (i = 1; i <= problem->states; i++) {
 		problem->left[0][i] = 1.0;
@@ -172,6 +181,8 @@ double tm_spectral_max_eval(TmSpectralProblem *problem, double fugacity)
 		for (i = 1; i <= problem->states; i++) {
 			double nL = problem->left[1][i] / L0;
 			double nR = problem->right[1][i] / R0;
+			/* Hamiltonian cases can oscillate; damping preserves the fixed
+			   point while improving convergence on those bipartite matrices. */
 			if (problem->damping_enabled) {
 				problem->left[1][i] = 0.5 * problem->left[0][i] + 0.5 * nL;
 				problem->right[1][i] = 0.5 * problem->right[0][i] + 0.5 * nR;
@@ -221,6 +232,7 @@ double tm_spectral_beta(const TmSpectralProblem *problem, double kappa)
 	unsigned long int row;
 	double *fug_pow = build_fugacity_powers(kappa, problem->max_edge);
 
+	/* Derivative-like weighted sum used by the thesis amplitude formula. */
 	#pragma omp parallel for reduction(+:beta) schedule(static)
 	for (row = 1; row <= problem->states; row++) {
 		unsigned long int pos;
