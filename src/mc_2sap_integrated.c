@@ -653,6 +653,11 @@ void mc2_add_right_endhinge(unsigned long int secnum, int nth_endhinge);
 int mc2_reverse_direc(int direc);
 
 void mc2_printtofile();
+static int mc2_run_creator_all_after_build(void);
+
+static int mc2_creator_all_mode = 0;
+static unsigned long int mc2_creator_limit = 100000UL;
+static int mc2_creator_force = 0;
 
 /***************************************************************************/
 /******************* end of functions used in this program *****************/
@@ -979,6 +984,10 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 
 
 	printf("Finished generating all 2-spans and endhinges.\n");
+
+	if (mc2_creator_all_mode) {
+		return mc2_run_creator_all_after_build();
+	}
 
 	if(totalspan<2){
 		printf("totalspan=%d. This program only works for span>=2. Exitting\n", totalspan);
@@ -5616,3 +5625,299 @@ static double mc2_max_eval_LRvec(double fugacity)
 
 	return mc_spectral_max_eval_2sap(&input, fugacity);
 }
+
+typedef struct Mc2CreatorSeenNode {
+	char *key;
+	struct Mc2CreatorSeenNode *next;
+} Mc2CreatorSeenNode;
+
+#define MC2_CREATOR_HASH_SIZE 262144
+static Mc2CreatorSeenNode *mc2_creator_seen[MC2_CREATOR_HASH_SIZE];
+
+static unsigned long int mc2_creator_hash_string(const char *text)
+{
+	unsigned long int h = 14695981039346656037ULL;
+	while (*text) {
+		h ^= (unsigned char)*text++;
+		h *= 1099511628211ULL;
+	}
+	return h;
+}
+
+static char *mc2_creator_strdup(const char *text)
+{
+	size_t len = strlen(text) + 1;
+	char *copy = (char *)mc2sap_xcalloc(len, sizeof(*copy), "creator key copy");
+	memcpy(copy, text, len);
+	return copy;
+}
+
+static void mc2_creator_seen_clear(void)
+{
+	unsigned long int i;
+	for (i = 0; i < MC2_CREATOR_HASH_SIZE; i++) {
+		Mc2CreatorSeenNode *node = mc2_creator_seen[i];
+		while (node) {
+			Mc2CreatorSeenNode *next = node->next;
+			free(node->key);
+			free(node);
+			node = next;
+		}
+		mc2_creator_seen[i] = NULL;
+	}
+}
+
+static int mc2_creator_seen_insert(const char *key)
+{
+	unsigned long int bucket = mc2_creator_hash_string(key) % MC2_CREATOR_HASH_SIZE;
+	Mc2CreatorSeenNode *node = mc2_creator_seen[bucket];
+	while (node) {
+		if (strcmp(node->key, key) == 0) return 0;
+		node = node->next;
+	}
+	node = (Mc2CreatorSeenNode *)mc2sap_xcalloc(1, sizeof(*node), "creator seen node");
+	node->key = mc2_creator_strdup(key);
+	node->next = mc2_creator_seen[bucket];
+	mc2_creator_seen[bucket] = node;
+	return 1;
+}
+
+static char *mc2_creator_poly_string(int which)
+{
+	size_t cap = (size_t)(vM * vL * (totalspan + 1) + 8) * 24;
+	char *buf = (char *)mc2sap_xcalloc(cap, sizeof(*buf), "creator polygon string");
+	size_t used = 0;
+	int i = 0;
+
+	used += (size_t)snprintf(buf + used, cap - used, "%d,%d,%d:",
+		which == 0 ? mc2_built_walks_start[0][0] : mc2_built_walks_start2[0][0],
+		which == 0 ? mc2_built_walks_start[0][1] : mc2_built_walks_start2[0][1],
+		which == 0 ? mc2_built_walks_start[0][2] : mc2_built_walks_start2[0][2]);
+	while ((which == 0 ? mc2_built_walks_direcs[0][i] : mc2_built_walks_direcs2[0][i]) != 0) {
+		used += (size_t)snprintf(buf + used, cap - used, "%d,",
+			which == 0 ? mc2_built_walks_direcs[0][i] : mc2_built_walks_direcs2[0][i]);
+		if (used >= cap) {
+			fprintf(stderr, "Fatal: creator polygon string exceeded buffer\n");
+			exit(EXIT_FAILURE);
+		}
+		i++;
+	}
+	return buf;
+}
+
+static char *mc2_creator_pair_key(void)
+{
+	char *a = mc2_creator_poly_string(0);
+	char *b = mc2_creator_poly_string(1);
+	const char *first = a;
+	const char *second = b;
+	size_t len;
+	char *key;
+
+	if (strcmp(a, b) > 0) {
+		first = b;
+		second = a;
+	}
+	len = strlen(first) + strlen(second) + 2;
+	key = (char *)mc2sap_xcalloc(len, sizeof(*key), "creator pair key");
+	snprintf(key, len, "%s|%s", first, second);
+	free(a);
+	free(b);
+	return key;
+}
+
+static void mc2_creator_reset_built_walks(void)
+{
+	int i, j;
+	for (i = 0; i <= vM * vL / 2 - 1; i++) {
+		for (j = 0; j <= 2; j++) {
+			mc2_built_walks_start[i][j] = -1;
+			mc2_built_walks_end[i][j] = -1;
+			mc2_built_walks_start2[i][j] = -1;
+			mc2_built_walks_end2[i][j] = -1;
+		}
+		for (j = 0; j <= vM * vL * (totalspan + 1) - 1; j++) {
+			mc2_built_walks_direcs[i][j] = 0;
+			mc2_built_walks_direcs2[i][j] = 0;
+		}
+	}
+}
+
+static void mc2_creator_load_left_endhinge(unsigned long int section, int nth_endhinge)
+{
+	int nth_walk, i;
+
+	mc2_num_built_walks = mc2_Lend_num_walks[section][nth_endhinge];
+	mc2_num_built_walks2 = mc2_Lend_num_walks2[section][nth_endhinge];
+	for (nth_walk = 0; nth_walk <= mc2_num_built_walks - 1; nth_walk++) {
+		for (i = 0; i <= 2; i++) {
+			mc2_built_walks_start[nth_walk][i] = mc2_Lend_start[section][nth_endhinge][i][nth_walk];
+			mc2_built_walks_end[nth_walk][i] = mc2_Lend_end[section][nth_endhinge][i][nth_walk];
+		}
+		for (i = 0; i <= vM * vL; i++) mc2_built_walks_direcs[nth_walk][i] = mc2_Lend_walks[section][nth_endhinge][i][nth_walk];
+	}
+	for (nth_walk = 0; nth_walk <= mc2_num_built_walks2 - 1; nth_walk++) {
+		for (i = 0; i <= 2; i++) {
+			mc2_built_walks_start2[nth_walk][i] = mc2_Lend_start2[section][nth_endhinge][i][nth_walk];
+			mc2_built_walks_end2[nth_walk][i] = mc2_Lend_end2[section][nth_endhinge][i][nth_walk];
+		}
+		for (i = 0; i <= vM * vL; i++) mc2_built_walks_direcs2[nth_walk][i] = mc2_Lend_walks2[section][nth_endhinge][i][nth_walk];
+	}
+}
+
+static void mc2_creator_print_one_poly(FILE *out, int which)
+{
+	int i = 0;
+
+	fprintf(out, "%d %d %d\n",
+		which == 0 ? mc2_built_walks_start[0][0] : mc2_built_walks_start2[0][0],
+		which == 0 ? mc2_built_walks_start[0][1] : mc2_built_walks_start2[0][1],
+		which == 0 ? mc2_built_walks_start[0][2] : mc2_built_walks_start2[0][2]);
+	while ((which == 0 ? mc2_built_walks_direcs[0][i] : mc2_built_walks_direcs2[0][i]) != 0) {
+		fprintf(out, "%d\n", which == 0 ? mc2_built_walks_direcs[0][i] : mc2_built_walks_direcs2[0][i]);
+		i++;
+	}
+	fprintf(out, "-111\n");
+}
+
+static void mc2_creator_print_pair(FILE *out)
+{
+	char *a = mc2_creator_poly_string(0);
+	char *b = mc2_creator_poly_string(1);
+	int first = strcmp(a, b) <= 0 ? 0 : 1;
+	free(a);
+	free(b);
+	mc2_creator_print_one_poly(out, first);
+	mc2_creator_print_one_poly(out, first == 0 ? 1 : 0);
+}
+
+typedef struct Mc2CreatorContext {
+	FILE *fp;
+	unsigned long int total;
+	unsigned long int *sequence_sections;
+	int *sequence_nths;
+} Mc2CreatorContext;
+
+static void mc2_creator_build_leaf(
+	Mc2CreatorContext *ctx,
+	unsigned long int left_section,
+	int left_endhinge,
+	int right_endhinge,
+	int sequence_len)
+{
+	int idx;
+	unsigned long int terminal_section;
+	char *key;
+
+	mc2_creator_reset_built_walks();
+	mc2_creator_load_left_endhinge(left_section, left_endhinge);
+	for (idx = 0; idx < sequence_len; idx++) {
+		mc2_add_to_built_walks(ctx->sequence_sections[idx], ctx->sequence_nths[idx]);
+	}
+	terminal_section = mc2_t_outsection[ctx->sequence_sections[sequence_len - 1]][ctx->sequence_nths[sequence_len - 1]];
+	mc2_add_right_endhinge(terminal_section, right_endhinge);
+
+	key = mc2_creator_pair_key();
+	if (mc2_creator_seen_insert(key)) {
+		if (ctx->fp) mc2_creator_print_pair(ctx->fp);
+		ctx->total++;
+	}
+	free(key);
+}
+
+static void mc2_creator_enumerate_paths(
+	Mc2CreatorContext *ctx,
+	unsigned long int left_section,
+	int left_endhinge,
+	unsigned long int current_section,
+	int depth,
+	int target_depth)
+{
+	unsigned long int nth;
+	if (depth == target_depth) {
+		for (nth = 1; nth <= mc2_num_right_endhinges[current_section]; nth++) {
+			mc2_creator_build_leaf(ctx, left_section, left_endhinge, (int)nth, target_depth);
+		}
+		return;
+	}
+	for (nth = 1; nth <= mc2_num_outsections[current_section]; nth++) {
+		ctx->sequence_sections[depth] = current_section;
+		ctx->sequence_nths[depth] = (int)nth;
+		mc2_creator_enumerate_paths(ctx, left_section, left_endhinge, mc2_t_outsection[current_section][nth], depth + 1, target_depth);
+	}
+}
+
+static unsigned long int mc2_creator_enumerate(FILE *out)
+{
+	Mc2CreatorContext ctx;
+	unsigned long int section;
+	int left;
+
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.fp = out;
+	ctx.sequence_sections = (unsigned long int *)mc2sap_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_sections), "creator section sequence");
+	ctx.sequence_nths = (int *)mc2sap_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_nths), "creator transition sequence");
+	mc2_creator_seen_clear();
+
+	for (section = 1; section <= max_keynum; section++) {
+		for (left = 1; left <= mc2_num_left_endhinges[section]; left++) {
+			mc2_creator_enumerate_paths(&ctx, section, left, section, 0, totalspan - 1);
+		}
+	}
+	free(ctx.sequence_sections);
+	free(ctx.sequence_nths);
+	return ctx.total;
+}
+
+static int mc2_run_creator_all_after_build(void)
+{
+	char outdir[160];
+	char outfile[240];
+	FILE *out;
+	unsigned long int count;
+
+	if (totalspan < 2) {
+		fprintf(stderr, "Error: Span (-s) must be at least 2 (received %d).\n", totalspan);
+		return EXIT_FAILURE;
+	}
+
+	count = mc2_creator_enumerate(NULL);
+	if (!mc2_creator_force && count > mc2_creator_limit) {
+		fprintf(stderr,
+			"Refusing to write %lu unordered 2SAPs; limit is %lu. Re-run with -C <limit> or -f to force.\n",
+			count, mc2_creator_limit);
+		mc2_creator_seen_clear();
+		return EXIT_FAILURE;
+	}
+	mc2_creator_seen_clear();
+
+	mkdir("data", 0775);
+	mkdir("data/CreatorAll", 0775);
+	snprintf(outdir, sizeof(outdir), "data/CreatorAll/2SAPs");
+	mkdir(outdir, 0775);
+	snprintf(outfile, sizeof(outfile), "%s/All2SAPsL%dM%dspan%d.txt", outdir, L, M, totalspan);
+	out = fopen(outfile, "w");
+	if (!out) {
+		fprintf(stderr, "Fatal: could not open '%s': %s\n", outfile, strerror(errno));
+		return EXIT_FAILURE;
+	}
+	fprintf(out, "UofS\n");
+	(void)mc2_creator_enumerate(out);
+	fprintf(out, "-999\n");
+	fclose(out);
+	mc2_creator_seen_clear();
+
+	printf("Generated %lu unordered 2SAPs of exact span %d in %dx%d tube.\n", count, totalspan, L, M);
+	printf("Wrote %s\n", outfile);
+	return EXIT_SUCCESS;
+}
+
+int run_integrated_2sap_creator_all(int argc, char *argv[], unsigned long int limit, int force)
+{
+	mc2_creator_all_mode = 1;
+	mc2_creator_limit = limit;
+	mc2_creator_force = force;
+	return run_integrated_2sap_sampler(argc, argv);
+}
+
+#undef MC2_CREATOR_HASH_SIZE

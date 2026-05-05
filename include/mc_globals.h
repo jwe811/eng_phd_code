@@ -171,6 +171,8 @@ void set_system_params();
 void allocate_globals();
 int run_integrated_2sap_sampler(int argc, char *argv[]);
 int run_integrated_2sap_ham_sampler(int argc, char *argv[]);
+int run_integrated_2sap_creator_all(int argc, char *argv[], unsigned long int limit, int force);
+int run_integrated_2sap_ham_creator_all(int argc, char *argv[], unsigned long int limit, int force);
 double generate_evectors();
 void conv_to_array(void);
 void conv_endhinges_to_array(void);

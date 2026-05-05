@@ -10,6 +10,7 @@ data/SAPs/
 data/HamSAPs/
 data/2SAPs/
 data/Ham2SAPs/
+data/CreatorAll/
 data/TMresults/
 data/MC_Evectors/
 
@@ -18,6 +19,7 @@ __pycache__/
 *.pyc
 
 # Local/IDE settings
+.codex
 .vscode/
 .DS_Store
 

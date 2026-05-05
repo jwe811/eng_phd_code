@@ -17,6 +17,7 @@ GEN_CFLAGS = $(CFLAGS_BASE) $(LEGACY_WARNFLAGS) -Wno-unused-variable -Wno-unused
 # Target executables
 TM_OUT = $(BINDIR)/tm_master
 MC_OUT = $(BINDIR)/mc_master
+CREATOR_OUT = $(BINDIR)/creator_all
 
 # Source files
 TM_SRC = $(SRCDIR)/MASTER_TMcalc.c $(SRCDIR)/tm_spectral.c
@@ -25,14 +26,19 @@ MC_SRC = $(SRCDIR)/MASTER_MCsample.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/mc_globa
          $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
          $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_sampler_weights.c \
          $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c
+CREATOR_SRC = $(SRCDIR)/MASTER_CreatorAll.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/mc_globals.c \
+              $(SRCDIR)/mc_builder.c $(SRCDIR)/mc_utils.c \
+              $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
+              $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c
 
 # Object files
 TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
+CREATOR_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.creator.o, $(CREATOR_SRC))
 
-.PHONY: all clean tm sampler test verify parity-audit directories
+.PHONY: all clean tm sampler creator test verify parity-audit directories
 
-all: directories $(TM_OUT) $(MC_OUT)
+all: directories $(TM_OUT) $(MC_OUT) $(CREATOR_OUT)
 
 directories:
 	@mkdir -p $(BUILDDIR) $(BINDIR)
@@ -40,6 +46,8 @@ directories:
 tm: directories $(TM_OUT)
 
 sampler: directories $(MC_OUT)
+
+creator: directories $(CREATOR_OUT)
 
 # TM Master Target
 $(TM_OUT): $(TM_OBJS)
@@ -52,13 +60,19 @@ $(BUILDDIR)/%.tm.o: $(SRCDIR)/%.c $(INCDIR)/tm_runtime.h $(INCDIR)/tm_spectral.h
 $(MC_OUT): $(MC_OBJS)
 	$(CC) $(MC_OBJS) -o $@ $(MC_CFLAGS)
 
+$(CREATOR_OUT): $(CREATOR_OBJS)
+	$(CC) $(CREATOR_OBJS) -o $@ $(MC_CFLAGS)
+
 # Compile MC objects
 $(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_sampler_weights.h
 	$(CC) -c $< -o $@ $(MC_CFLAGS)
 
+$(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h
+	$(CC) -c $< -o $@ $(MC_CFLAGS)
+
 clean:
 	rm -rf $(BUILDDIR) $(BINDIR)
-	rm -rf data/TMresults data/MC_Evectors
+	rm -rf data/TMresults data/MC_Evectors data/CreatorAll
 	rm -f data/*.txt data/*.bin
 
 test: directories $(TM_OUT)

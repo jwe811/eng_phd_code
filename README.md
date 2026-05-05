@@ -8,6 +8,7 @@ two unified executables:
   calculations for modes 0-3.
 - `bin/mc_master`: Monte Carlo sampling for modes 0-3, including integrated
   2SAP and 2SAP-Hamiltonian logic.
+- `bin/creator_all`: exhaustive exact-span generation for modes 0-3.
 
 The current code is source-level C. It does not rely on on-the-fly compilation,
 `-Dmain=...`, `objcopy`, or symbol prefixing to access 2SAP modes.
@@ -60,9 +61,10 @@ make parity-audit
 ## Build Targets
 
 ```bash
-make              # Build bin/tm_master and bin/mc_master
+make              # Build bin/tm_master, bin/mc_master, and bin/creator_all
 make tm           # Build only bin/tm_master
 make sampler      # Build only bin/mc_master
+make creator      # Build only bin/creator_all
 make test         # Run scripts/audit_engine.py for a small TM case
 make verify       # Run transfer-matrix benchmark table
 make parity-audit # Run TM and MC parity checks
@@ -70,8 +72,8 @@ make clean        # Remove build artifacts and generated TM/eigenvector data
 ```
 
 `make clean` removes `build/`, `bin/`, `data/TMresults`, `data/MC_Evectors`,
-and loose `data/*.txt` / `data/*.bin` files. It does not remove sample
-subdirectories such as `data/SAPs` or `data/2SAPs`.
+`data/CreatorAll`, and loose `data/*.txt` / `data/*.bin` files. It does not
+remove sampled-output subdirectories such as `data/SAPs` or `data/2SAPs`.
 
 ## Transfer Matrix CLI
 
@@ -179,6 +181,54 @@ seed make the output filename and RNG stream reproducible:
 bin/mc_master -L 2 -M 1 -m 0 -s 5 -n 50 -r 1 -S 12345
 ```
 
+## Exhaustive Creator CLI
+
+Executable: `bin/creator_all`
+
+`creator_all` generates every SAP or unordered 2SAP system of exactly span `s`
+for the requested tube and mode. It uses the same graph/endhinge discovery and
+deduplication tables as the Monte Carlo engine, but walks the transition graph
+exhaustively instead of sampling.
+
+| Flag | Description |
+| :--- | :---------- |
+| `-L <int>` | Lattice width. Must be non-negative; at least one of `L`, `M` must be positive. |
+| `-M <int>` | Lattice height. Must be non-negative; at least one of `L`, `M` must be positive. |
+| `-m <0..3>` | Simulation mode. |
+| `-s <int>` | Exact target span. Must be at least `2`. |
+| `-C <uint>` | Maximum number of objects to write before refusing. Default: `100000`. |
+| `-f` | Force output even when the count exceeds `-C`. |
+
+Generate all standard SAPs of exact span 2 in a `1 x 1` tube:
+
+```bash
+bin/creator_all -L 1 -M 1 -m 0 -s 2
+```
+
+Generate all Hamiltonian SAPs for the same tube and span:
+
+```bash
+bin/creator_all -L 1 -M 1 -m 1 -s 2
+```
+
+Generate all unordered 2SAP systems of exact span 2 in a `2 x 1` tube:
+
+```bash
+bin/creator_all -L 2 -M 1 -m 2 -s 2
+```
+
+Generate all unordered 2SAP-Hamiltonian systems, allowing a larger output:
+
+```bash
+bin/creator_all -L 2 -M 1 -m 3 -s 2 -C 1000000
+```
+
+Intentionally refuse output if the enumeration is larger than a small cap:
+
+```bash
+bin/creator_all -L 1 -M 1 -m 0 -s 2 -C 10
+```
+
 ## Output Files
 
 Generated files live under `data/`. Directories are created on demand.
@@ -218,6 +268,18 @@ format expected by Monte Carlo workflows:
 The sampler also writes calculated transition-indexed eigenvectors to
 `data/MC_Evectors/` for auditing and reuse.
 
+### Exhaustive Creator Output
+
+`creator_all` writes `UofS` files under `data/CreatorAll/<MODE>/`:
+
+- Mode 0: `data/CreatorAll/SAPs/AllSAPsL<L>M<M>span<S>.txt`
+- Mode 1: `data/CreatorAll/HamSAPs/AllHamSAPsL<L>M<M>span<S>.txt`
+- Mode 2: `data/CreatorAll/2SAPs/All2SAPsL<L>M<M>span<S>.txt`
+- Mode 3: `data/CreatorAll/Ham2SAPs/AllHam2SAPsL<L>M<M>span<S>.txt`
+
+The terminal output includes the total number of generated SAPs or unordered
+2SAP systems.
+
 ## Verification
 
 The most important regression check is:
@@ -253,6 +315,7 @@ python3 scripts/audit_engine.py -L 2 -M 1 -m 0
 src/
   MASTER_TMcalc.c          Unified transfer-matrix driver
   MASTER_MCsample.c        Unified Monte Carlo entry point
+  MASTER_CreatorAll.c      Exhaustive exact-span generator
   tm_spectral.c            Shared OpenMP CSR spectral solver for TM
   mc_spectral.c            Transition-indexed spectral solver for 2SAP MC
   mc_sampler_weights.c     Precomputed rejection-sampling weights
