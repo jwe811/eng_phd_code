@@ -14,10 +14,13 @@
 #include <stdio.h>
 
 #include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
+
+#include "mc_spectral.h"
 
 extern int L;
 extern int M;
@@ -36,7 +39,8 @@ extern double dom_evalue;
 extern double fval;
 
 extern void set_system_params();
-extern double mc2h_max_eval_LRvec(double fugacity);
+
+static double mc2h_max_eval_LRvec(double fugacity);
 
 double *mc2h_MC_L_Evector[2];
 double *mc2h_MC_R_Evector[2];
@@ -5938,6 +5942,8 @@ void mc2h_printtofile(){
 
 
 
+#undef num_outsections
+
 
 
 	
@@ -5951,14 +5957,25 @@ void mc2h_printtofile(){
 
 
 
-#define tspans_nrr mc2h_t_nrr
-#define tspans_edges mc2h_MC_tspans_edges
-#define L_Evector mc2h_MC_L_Evector
-#define R_Evector mc2h_MC_R_Evector
-#define tspans_outsection mc2h_t_outsection
-#include "../deps/archive/transfer_matrix/pw_meth_ts_LRvec_fcheck_2SAP_HAM.c"
-#undef tspans_nrr
-#undef tspans_edges
-#undef L_Evector
-#undef R_Evector
-#undef tspans_outsection
+static double mc2h_max_eval_LRvec(double fugacity)
+{
+	McTransitionSpectralInput input;
+
+	memset(&input, 0, sizeof(input));
+	input.max_keynum = max_keynum;
+	input.max_tspans = (unsigned long int)max_tspans;
+	input.num_outsections = mc2h_num_outsections;
+	input.tspans_outsection = mc2h_t_outsection;
+	input.tspans_edges = mc2h_MC_tspans_edges;
+	input.tspans_nrr = mc2h_t_nrr;
+	input.left[0] = mc2h_MC_L_Evector[0];
+	input.left[1] = mc2h_MC_L_Evector[1];
+	input.right[0] = mc2h_MC_R_Evector[0];
+	input.right[1] = mc2h_MC_R_Evector[1];
+	input.force = fval;
+	input.L = L;
+	input.M = M;
+	input.hamiltonian = 1;
+
+	return mc_spectral_max_eval_2sap(&input, fugacity);
+}

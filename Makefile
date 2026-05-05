@@ -23,6 +23,7 @@ TM_SRC = $(SRCDIR)/MASTER_TMcalc.c
 MC_SRC = $(SRCDIR)/MASTER_MCsample.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/mc_globals.c \
          $(SRCDIR)/mc_builder.c $(SRCDIR)/mc_utils.c \
          $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
+         $(SRCDIR)/mc_spectral.c \
          $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c
 
 # Object files
@@ -48,7 +49,7 @@ $(MC_OUT): $(MC_OBJS)
 	$(CC) $(MC_OBJS) -o $@ $(MC_CFLAGS)
 
 # Compile MC objects
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h
 	$(CC) -c $< -o $@ $(MC_CFLAGS)
 
 clean:
