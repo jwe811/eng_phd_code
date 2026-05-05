@@ -16,6 +16,7 @@ __pycache__/
 
 # Local/IDE settings
 .codex
+.agents/
 .vscode/
 .DS_Store
 
