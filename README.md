@@ -1,29 +1,30 @@
-# SAP and 2SAP Transfer Matrix / Monte Carlo Engines
+# SAP and 2SAP Research Toolkit
 
-This repository contains research code for self-avoiding polygons (SAPs) and
-two self-avoiding polygon systems (2SAPs) in `L x M` lattice tubes. It provides
-two unified executables:
+This repository studies self-avoiding polygons (SAPs) and two-polygon systems
+(2SAPs) in finite `L x M` lattice tubes. It can build transfer matrices,
+calculate connective constants and eigenvectors, generate random Monte Carlo
+samples, exhaustively enumerate all polygons of a fixed span, and post-process
+the resulting polygon files.
 
-- `bin/tm_master`: transfer-matrix state generation, CSR export, and spectral
-  calculations for modes 0-3.
-- `bin/mc_master`: Monte Carlo sampling for modes 0-3, including integrated
-  2SAP and 2SAP-Hamiltonian logic.
-- `bin/creator_all`: exhaustive exact-span generation for modes 0-3.
+The main tools are:
 
-The current code is source-level C. It does not rely on on-the-fly compilation,
-`-Dmain=...`, `objcopy`, or symbol prefixing to access 2SAP modes.
+- `bin/tm_master`: transfer-matrix construction and spectral calculations.
+- `bin/mc_master`: Monte Carlo sampling for SAP, Hamiltonian SAP, 2SAP, and
+  Hamiltonian 2SAP modes.
+- `bin/creator_all`: exhaustive exact-span generation for all four modes.
+- `scripts/uofs_tool.py`: conversion, validation, counting, canonicalization,
+  deduplication, and contact-map analysis for generated files.
+- `scripts/spectral_tool.py`: audits over exported transfer-matrix CSR data and
+  eigenvectors.
+- `scripts/topology_tool.py`: BFACF-style shrink labels, label tallies,
+  split-by-label output, and basic linking-number calculations.
+
+The current engines are source-level C. They do not use on-the-fly compilation,
+`-Dmain=...`, `objcopy`, or symbol prefixing for the 2SAP modes.
 
 [Ph.D. dissertation](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496)
 
-## Requirements
-
-- `gcc`
-- `make`
-- OpenMP support (`-fopenmp`)
-- Python 3 for audit scripts
-- Bash for `scripts/verify_all.sh`
-
-## Quick Start
+## First Five Minutes
 
 Build everything:
 
@@ -31,25 +32,59 @@ Build everything:
 make clean && make
 ```
 
-Run a transfer-matrix calculation:
-
-```bash
-bin/tm_master -L 2 -M 1 -m 1
-```
-
-Generate Monte Carlo samples:
-
-```bash
-bin/mc_master -L 2 -M 1 -m 0 -s 5 -n 50 -r 1 -S 12345
-```
-
-Run the automated parity audit:
+Run the full parity check:
 
 ```bash
 make parity-audit
 ```
 
-## Modes
+Generate a tiny exhaustive SAP dataset:
+
+```bash
+bin/creator_all -L 1 -M 1 -m 0 -s 2
+```
+
+Summarize and validate that file:
+
+```bash
+python3 scripts/uofs_tool.py summary data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+python3 scripts/uofs_tool.py validate data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt -L 1 -M 1 -s 2
+```
+
+Generate one random 2SAP sample:
+
+```bash
+bin/mc_master -L 2 -M 1 -m 2 -s 2 -n 1 -r 303 -S 822100
+```
+
+Compute a transfer-matrix result:
+
+```bash
+bin/tm_master -L 2 -M 1 -m 0
+```
+
+## Requirements
+
+- `gcc`
+- `make`
+- OpenMP support for `gcc` via `-fopenmp`
+- Python 3
+- Bash, for `scripts/verify_all.sh`
+
+No third-party Python packages are required.
+
+## Concepts
+
+### Lattice Tubes
+
+The tools use an `L x M` tube cross-section and a span direction. In generated
+UofS output from this repo, the span direction is `x`, width `L` is stored on
+`y`, and height `M` is stored on `z`.
+
+The post-processing tools default to this convention. Use `--span-axis z` only
+for older files that use `z` as the tube direction.
+
+### Modes
 
 | Mode | Name | Meaning |
 | :--- | :--- | :------ |
@@ -58,291 +93,218 @@ make parity-audit
 | `2` | 2SAP | Two polygons sharing the same physical lattice |
 | `3` | 2SAP-Hamiltonian | Two polygons whose union satisfies the Hamiltonian condition |
 
-## Build Targets
+### UofS Files
 
-```bash
-make              # Build bin/tm_master, bin/mc_master, and bin/creator_all
-make tm           # Build only bin/tm_master
-make sampler      # Build only bin/mc_master
-make creator      # Build only bin/creator_all
-make test         # Run scripts/audit_engine.py for a small TM case
-make verify       # Run transfer-matrix benchmark table
-make parity-audit # Run TM and MC parity checks
-make postprocess-test # Run smoke tests for revived post-processing tools
-make clean        # Remove build artifacts and generated data subtrees
-```
+Most generated polygon files use `UofS` direction format:
 
-`make clean` removes `build/`, `bin/`, `data/TransferMatrix`,
-`data/MonteCarlo`, `data/CreatorAll`, and loose `data/*.txt` / `data/*.bin`
-files.
+- The first line is `UofS`.
+- Each polygon starts with `x y z`.
+- Direction codes follow, one per line.
+- `-111` ends one polygon.
+- `-999` ends the file.
+- In 2SAP files, two consecutive polygons form one 2SAP object.
 
-## Transfer Matrix CLI
+Direction codes:
 
-Executable: `bin/tm_master`
+| Code | Move |
+| :--- | :--- |
+| `1` | `+x` |
+| `2` | `-x` |
+| `3` | `+y` |
+| `4` | `-y` |
+| `5` | `+z` |
+| `6` | `-z` |
 
-| Flag | Description |
-| :--- | :---------- |
-| `-L <int>` | Lattice width. Must be non-negative; at least one of `L`, `M` must be positive. |
-| `-M <int>` | Lattice height. Must be non-negative; at least one of `L`, `M` must be positive. |
-| `-m <0..3>` | Simulation mode. |
-| `-S <int>` | Override maximum number of one-polygon sections. |
-| `-K <int>` | Override maximum number of composite 2SAP states. |
-| `-c <float>` | Power-method convergence threshold. Default: `1e-8`. |
-| `-d` | Enable damping in the spectral solver. Automatically enabled for Hamiltonian modes. |
-| `-x <float>` | Manually set fugacity and skip root finding. Useful for sampling exports. |
-| `-E` | Export transition-indexed right eigenvectors for Monte Carlo workflows. |
-| `-h` | Print usage. |
+## What Can This Repo Do?
+
+### 1. Transfer-Matrix Calculations
+
+Use `tm_master` when you want connective constants, amplitudes, eigenvectors,
+or exported sparse transfer matrices.
 
 Examples:
 
-Calculate the standard SAP connective constant for a `2 x 1` tube:
-
 ```bash
+# Standard SAP connective constant for a 2 x 1 tube
 bin/tm_master -L 2 -M 1 -m 0
-```
 
-Calculate the Hamiltonian SAP case for the same tube. Damping is enabled
-automatically for Hamiltonian modes:
-
-```bash
+# Hamiltonian SAP case
 bin/tm_master -L 2 -M 1 -m 1
-```
 
-Calculate the 2SAP transfer matrix for a `2 x 1` tube:
-
-```bash
+# 2SAP transfer matrix
 bin/tm_master -L 2 -M 1 -m 2
-```
 
-Calculate the 2SAP-Hamiltonian case on a `2 x 2` tube:
-
-```bash
+# 2SAP-Hamiltonian transfer matrix
 bin/tm_master -L 2 -M 2 -m 3
-```
 
-Solve at a fixed fugacity instead of root-finding, then export the
-transition-indexed right eigenvector used by Monte Carlo tooling:
-
-```bash
+# Fixed fugacity solve plus Monte Carlo eigenvector export
 bin/tm_master -L 2 -M 1 -m 2 -x 1.0 -E
-```
 
-Run a larger exploratory case with explicit capacity overrides:
-
-```bash
+# Larger exploratory run with explicit capacity overrides
 bin/tm_master -L 3 -M 1 -m 2 -S 200000 -K 800000
 ```
 
-## Monte Carlo CLI
-
-Executable: `bin/mc_master`
+Important flags:
 
 | Flag | Description |
 | :--- | :---------- |
-| `-L <int>` | Lattice width. Must be non-negative; at least one of `L`, `M` must be positive. |
-| `-M <int>` | Lattice height. Must be non-negative; at least one of `L`, `M` must be positive. |
-| `-m <0..3>` | Simulation mode. Modes 2 and 3 dispatch to the integrated 2SAP samplers. |
-| `-s <int>` | Target span. Must be at least `2`. |
-| `-n <int>` | Number of samples. Must be positive. |
-| `-r <int>` | Run number used in the output filename. |
-| `-S <uint>` | RNG seed. |
-
-Examples:
-
-Generate one standard SAP sample on a `1 x 1` tube at span 2. This is the
-small deterministic case used in the parity audit:
-
-```bash
-bin/mc_master -L 1 -M 1 -m 0 -s 2 -n 1 -r 301 -S 227001
-```
-
-Generate one Hamiltonian SAP sample for the same lattice and span:
-
-```bash
-bin/mc_master -L 1 -M 1 -m 1 -s 2 -n 1 -r 302 -S 227002
-```
-
-Generate one 2SAP sample on a `2 x 1` tube. This checks the integrated mode 2
-path and the `9.455960990693537` dominant eigenvalue benchmark:
-
-```bash
-bin/mc_master -L 2 -M 1 -m 2 -s 2 -n 1 -r 303 -S 822100
-```
-
-Generate one 2SAP-Hamiltonian sample:
-
-```bash
-bin/mc_master -L 2 -M 1 -m 3 -s 2 -n 1 -r 304 -S 931250
-```
-
-Generate a larger batch of standard SAP samples at span 5. The run number and
-seed make the output filename and RNG stream reproducible:
-
-```bash
-bin/mc_master -L 2 -M 1 -m 0 -s 5 -n 50 -r 1 -S 12345
-```
-
-## Exhaustive Creator CLI
-
-Executable: `bin/creator_all`
-
-`creator_all` generates every SAP or unordered 2SAP system of exactly span `s`
-for the requested tube and mode. It uses the same graph/endhinge discovery and
-deduplication tables as the Monte Carlo engine, but walks the transition graph
-exhaustively instead of sampling.
-
-| Flag | Description |
-| :--- | :---------- |
-| `-L <int>` | Lattice width. Must be non-negative; at least one of `L`, `M` must be positive. |
-| `-M <int>` | Lattice height. Must be non-negative; at least one of `L`, `M` must be positive. |
+| `-L <int>` | Lattice width. Must be non-negative. |
+| `-M <int>` | Lattice height. Must be non-negative. |
 | `-m <0..3>` | Simulation mode. |
-| `-s <int>` | Exact target span. Must be at least `2`. |
-| `-C <uint>` | Maximum number of objects to write before refusing. Default: `100000`. |
-| `-f` | Force output even when the count exceeds `-C`. |
+| `-S <int>` | Override maximum one-polygon section capacity. |
+| `-K <int>` | Override maximum composite 2SAP state capacity. |
+| `-c <float>` | Power-method convergence threshold. Default: `1e-8`. |
+| `-d` | Enable damping. Hamiltonian modes enable it automatically. |
+| `-x <float>` | Manually set fugacity and skip root finding. |
+| `-E` | Export transition-indexed right eigenvectors for Monte Carlo workflows. |
+| `-h` | Print usage. |
 
-Generate all standard SAPs of exact span 2 in a `1 x 1` tube:
+Transfer-matrix output goes to:
 
-```bash
-bin/creator_all -L 1 -M 1 -m 0 -s 2
+```text
+data/TransferMatrix/TMresults/
 ```
 
-Generate all Hamiltonian SAPs for the same tube and span:
-
-```bash
-bin/creator_all -L 1 -M 1 -m 1 -s 2
-```
-
-Generate all unordered 2SAP systems of exact span 2 in a `2 x 1` tube:
-
-```bash
-bin/creator_all -L 2 -M 1 -m 2 -s 2
-```
-
-Generate all unordered 2SAP-Hamiltonian systems, allowing a larger output:
-
-```bash
-bin/creator_all -L 2 -M 1 -m 3 -s 2 -C 1000000
-```
-
-Intentionally refuse output if the enumeration is larger than a small cap:
-
-```bash
-bin/creator_all -L 1 -M 1 -m 0 -s 2 -C 10
-```
-
-## Output Files
-
-Generated files live under `data/`. Directories are created on demand.
-
-### Transfer Matrix Output
-
-`tm_master` writes transfer-matrix results to `data/TransferMatrix/TMresults/`:
+Files include:
 
 - `L_Evector_L<L>M<M>_<mode>.txt`
 - `R_Evector_L<L>M<M>_<mode>.txt`
 - `CSR_L<L>M<M>_<mode>.bin`
 
-Mode suffixes are:
+Mode suffixes are `std`, `ham`, `2sap`, and `2sap_ham`.
 
-- `std`
-- `ham`
-- `2sap`
-- `2sap_ham`
+### 2. Monte Carlo Sampling
 
-With `-E`, `tm_master` instead writes the transition-indexed right eigenvector
-format expected by Monte Carlo workflows:
-
-- `R_Evector_TS_L<L>M<M>.txt`
-- `R_EvectorHam_TS_L<L>M<M>.txt`
-- `2SAP_R_Evector_TS_L<L>M<M>.txt`
-- `2SAP_R_EvectorHam_TS_L<L>M<M>.txt`
-
-### Monte Carlo Output
-
-`mc_master` writes sampled polygons in `UofS` format:
-
-- Mode 0: `data/MonteCarlo/SAPs/MCpolysL<L>M<M>span<S>run<R>num<N>.txt`
-- Mode 1: `data/MonteCarlo/HamSAPs/MCpolysHamL<L>M<M>span<S>run<R>num<N>.txt`
-- Mode 2: `data/MonteCarlo/2SAPs/MC2SAPsL<L>M<M>span<S>run<R>num<N>.txt`
-- Mode 3: `data/MonteCarlo/Ham2SAPs/MC2SAPsHamL<L>M<M>span<S>run<R>num<N>.txt`
-
-The sampler also writes calculated transition-indexed eigenvectors to
-`data/MonteCarlo/MC_Evectors/` for auditing and reuse.
-
-### Exhaustive Creator Output
-
-`creator_all` writes `UofS` files under `data/CreatorAll/<MODE>/`:
-
-- Mode 0: `data/CreatorAll/All_SAPs/AllSAPsL<L>M<M>span<S>num<N>.txt`
-- Mode 1: `data/CreatorAll/All_HamSAPs/AllHamSAPsL<L>M<M>span<S>num<N>.txt`
-- Mode 2: `data/CreatorAll/All_2SAPs/All2SAPsL<L>M<M>span<S>num<N>.txt`
-- Mode 3: `data/CreatorAll/All_Ham2SAPs/AllHam2SAPsL<L>M<M>span<S>num<N>.txt`
-- Each file contains at most 10,000 objects and uses a `num<N>` suffix:
-  for example, `AllSAPsL1M1span2num1.txt`, `...num2.txt`, and so on.
-
-The terminal output includes the total number of generated SAPs or unordered
-2SAP systems.
-
-## Verification
-
-The most important regression check is:
-
-```bash
-make parity-audit
-```
-
-This runs:
-
-- transfer-matrix benchmarks across all four modes for `2x1`, `2x2`, and `3x1`
-  lattices;
-- Monte Carlo benchmarks across all four modes;
-- eigenvalue, rejection-count, output-path, and output-file SHA checks for the
-  MC cases.
-
-The critical 2SAP sampler benchmark is mode 2 on a `2 x 1` grid:
-
-```text
-dominant eigenvalue = 9.455960990693537
-```
-
-Additional checks:
-
-```bash
-make verify
-make postprocess-test
-python3 scripts/audit_engine.py -L 2 -M 1 -m 0
-```
-
-## Post-Processing Tools
-
-Archive post-processing workflows have been revived as importable Python modules
-under `postprocess/` and command-line tools under `scripts/`.
-
-### UofS File Tools
-
-`scripts/uofs_tool.py` handles file conversion, validation, counting,
-canonicalization, deduplication, and contact maps.
+Use `mc_master` when you want random samples at a target span.
 
 Examples:
 
 ```bash
+# One small standard SAP sample
+bin/mc_master -L 1 -M 1 -m 0 -s 2 -n 1 -r 301 -S 227001
+
+# One Hamiltonian SAP sample
+bin/mc_master -L 1 -M 1 -m 1 -s 2 -n 1 -r 302 -S 227002
+
+# One 2SAP sample
+bin/mc_master -L 2 -M 1 -m 2 -s 2 -n 1 -r 303 -S 822100
+
+# One 2SAP-Hamiltonian sample
+bin/mc_master -L 2 -M 1 -m 3 -s 2 -n 1 -r 304 -S 931250
+
+# Larger standard SAP batch
+bin/mc_master -L 2 -M 1 -m 0 -s 5 -n 50 -r 1 -S 12345
+```
+
+Important flags:
+
+| Flag | Description |
+| :--- | :---------- |
+| `-L <int>` | Lattice width. |
+| `-M <int>` | Lattice height. |
+| `-m <0..3>` | Simulation mode. |
+| `-s <int>` | Target span. Must be at least `2`. |
+| `-n <int>` | Number of samples. |
+| `-r <int>` | Run number used in output filenames. |
+| `-S <uint>` | RNG seed. |
+
+Monte Carlo samples go to:
+
+```text
+data/MonteCarlo/SAPs/
+data/MonteCarlo/HamSAPs/
+data/MonteCarlo/2SAPs/
+data/MonteCarlo/Ham2SAPs/
+```
+
+Calculated transition-indexed eigenvectors go to:
+
+```text
+data/MonteCarlo/MC_Evectors/
+```
+
+### 3. Exhaustive Exact-Span Generation
+
+Use `creator_all` when you want every SAP or unordered 2SAP object of exactly
+span `s`.
+
+Examples:
+
+```bash
+# All standard SAPs of exact span 2 in a 1 x 1 tube
+bin/creator_all -L 1 -M 1 -m 0 -s 2
+
+# All Hamiltonian SAPs
+bin/creator_all -L 1 -M 1 -m 1 -s 2
+
+# All unordered 2SAP systems
+bin/creator_all -L 2 -M 1 -m 2 -s 2
+
+# All unordered 2SAP-Hamiltonian systems with a larger count cap
+bin/creator_all -L 2 -M 1 -m 3 -s 2 -C 1000000
+
+# Refuse if output would exceed a small cap
+bin/creator_all -L 1 -M 1 -m 0 -s 2 -C 10
+```
+
+Important flags:
+
+| Flag | Description |
+| :--- | :---------- |
+| `-L <int>` | Lattice width. |
+| `-M <int>` | Lattice height. |
+| `-m <0..3>` | Simulation mode. |
+| `-s <int>` | Exact target span. Must be at least `2`. |
+| `-C <uint>` | Maximum number of objects to write before refusing. Default: `100000`. |
+| `-f` | Force output even when the count exceeds `-C`. |
+
+CreatorAll output goes to:
+
+```text
+data/CreatorAll/All_SAPs/
+data/CreatorAll/All_HamSAPs/
+data/CreatorAll/All_2SAPs/
+data/CreatorAll/All_Ham2SAPs/
+```
+
+Each file contains at most 10,000 objects and uses a `num<N>` suffix.
+
+### 4. UofS Post-Processing
+
+Use `scripts/uofs_tool.py` for generated polygon files.
+
+```bash
+# Summarize a file
 python3 scripts/uofs_tool.py summary data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+
+# Validate SAP output
 python3 scripts/uofs_tool.py validate data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt -L 1 -M 1 -s 2
+
+# Validate 2SAP output. The -p 2 means two polygons per object.
+python3 scripts/uofs_tool.py validate data/CreatorAll/All_2SAPs/All2SAPsL2M1span2num1.txt -p 2 -L 2 -M 1 -s 2
+
+# Convert directions to point coordinates
 python3 scripts/uofs_tool.py to-points data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/saps_points.txt
+
+# Convert 2SAP output to LP format for topology tooling
 python3 scripts/uofs_tool.py to-lp data/MonteCarlo/2SAPs/MC2SAPsL2M1span2run303num1.txt /tmp/links_lp.txt -p 2
+
+# Count objects by total edge length
+python3 scripts/uofs_tool.py count-edges data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+
+# Count objects by span
+python3 scripts/uofs_tool.py count-spans data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+
+# Count unique 2SAP objects, treating swapped polygon order as equivalent
 python3 scripts/uofs_tool.py unique data/CreatorAll/All_2SAPs/All2SAPsL2M1span2num1.txt -p 2 --unordered
+
+# Contact counts by cyclic distance
 python3 scripts/uofs_tool.py contacts data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt -r 1.0
 ```
 
-For 2SAP files, pass `-p 2` so two consecutive UofS polygons are treated as one
-object. The revived tools default to this repo's generated UofS convention:
-span on `x`, lattice width `L` on `y`, and lattice height `M` on `z`. Use
-`--span-axis z` for older files that use `z` as the tube direction.
+### 5. Spectral Post-Processing
 
-### Spectral Tools
-
-`scripts/spectral_tool.py` provides standalone audits over exported CSR matrices
-and eigenvectors:
+Use `scripts/spectral_tool.py` for CSR/eigenvector consistency checks.
 
 ```bash
 bin/tm_master -L 2 -M 1 -m 2
@@ -350,22 +312,83 @@ python3 scripts/spectral_tool.py audit -L 2 -M 1 -m 2 -x 0.653914
 python3 scripts/spectral_tool.py transition-check -L 2 -M 1 -m 2 -x 0.653914 --limit 10
 ```
 
-### Topology Tools
+### 6. Topology Post-Processing
 
-`scripts/topology_tool.py` revives the archive's BFACF-shrink-style
-knot/unknot workflow and label-file utilities:
+Use `scripts/topology_tool.py` for BFACF-style shrink labels, label-file
+workflows, and simple linking-number checks.
 
 ```bash
+# Label each SAP as unknot or knot_or_unresolved using the shrink heuristic
 python3 scripts/topology_tool.py shrink-id data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/shrink_ids.txt
+
+# Print shrunk lengths
 python3 scripts/topology_tool.py shrink-lengths data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt
+
+# Tally any label file
 python3 scripts/topology_tool.py tally-labels /tmp/shrink_ids.txt
+
+# Split a UofS file into one output file per label
 python3 scripts/topology_tool.py split-by-label data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt /tmp/shrink_ids.txt /tmp/split_by_label
+
+# Compute projection-based linking numbers for 2SAP objects
 python3 scripts/topology_tool.py linking-number data/CreatorAll/All_2SAPs/All2SAPsL2M1span2num1.txt --keep-going
 ```
 
-The shrink classifier is deterministic by default and intentionally conservative:
-objects that do not shrink below the archive threshold are labeled
+The shrink classifier is deterministic by default and intentionally
+conservative. Objects that do not shrink below the archive threshold are labeled
 `knot_or_unresolved`.
+
+## Build And Test Commands
+
+```bash
+make                  # Build bin/tm_master, bin/mc_master, and bin/creator_all
+make tm               # Build only bin/tm_master
+make sampler          # Build only bin/mc_master
+make creator          # Build only bin/creator_all
+make test             # Run a small CSR/eigenvector audit
+make verify           # Run transfer-matrix benchmark table
+make parity-audit     # Run TM and MC parity checks
+make postprocess-test # Run smoke tests for Python post-processing tools
+make clean            # Remove build artifacts and generated data subtrees
+```
+
+`make clean` removes `build/`, `bin/`, `data/TransferMatrix`,
+`data/MonteCarlo`, `data/CreatorAll`, and loose `data/*.txt` / `data/*.bin`
+files.
+
+The most important regression check is:
+
+```bash
+make parity-audit
+```
+
+It runs transfer-matrix benchmarks across all four modes for `2x1`, `2x2`, and
+`3x1`, plus Monte Carlo benchmarks across all four modes.
+
+The critical 2SAP sampler benchmark is:
+
+```text
+mode 2, 2 x 1 grid dominant eigenvalue = 9.455960990693537
+```
+
+## Output Directory Map
+
+```text
+data/
+  TransferMatrix/
+    TMresults/       CSR matrices and left/right eigenvectors
+  MonteCarlo/
+    MC_Evectors/     Transition-indexed eigenvectors from sampling runs
+    SAPs/            Mode 0 samples
+    HamSAPs/         Mode 1 samples
+    2SAPs/           Mode 2 samples
+    Ham2SAPs/        Mode 3 samples
+  CreatorAll/
+    All_SAPs/        Mode 0 exhaustive output
+    All_HamSAPs/     Mode 1 exhaustive output
+    All_2SAPs/       Mode 2 exhaustive output
+    All_Ham2SAPs/    Mode 3 exhaustive output
+```
 
 ## Source Layout
 
@@ -415,7 +438,7 @@ postprocess/
   states.
 - 2SAP transfer-matrix states are composite pairs of one-polygon sections.
 - Sparse matrices are stored in 1-based CSR form to remain compatible with the
-  archival Numerical Recipes-style vector helpers.
+  historical vector conventions.
 - The TM spectral solver prepares transpose CSR once so left-vector
   multiplication can run in parallel without atomic updates.
 - Monte Carlo sampling uses transition-indexed right eigenvectors and
