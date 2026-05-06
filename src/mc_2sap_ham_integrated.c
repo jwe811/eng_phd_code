@@ -42,6 +42,7 @@ extern double dom_evalue;
 extern double fval;
 
 static double mc2h_max_eval_LRvec(double fugacity);
+static Mc2SapSampleWriterConfig mc2h_sample_writer_config(void);
 
 double *mc2h_MC_L_Evector[2];
 double *mc2h_MC_R_Evector[2];
@@ -1267,20 +1268,9 @@ int run_integrated_2sap_ham_sampler(int argc, char *argv[])
 	printf("\nNOW SAMPLING 2SAPs: %d samples from L=%d, M=%d, span=%d\n", samplesize, L, M, totalspan);
 
 
-	mkdir("data", 0775);
-	mkdir("data/MonteCarlo", 0775);
-	mkdir("data/MonteCarlo/Ham2SAPs", 0775);
-	mc_checked_snprintf(mc2h_filename, sizeof(mc2h_filename), "data/MonteCarlo/Ham2SAPs/MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2h_filenum);
-	mc2h_fp = fopen(mc2h_filename, "w");	//create or overwrite the file "mc2h_filename"
-
-	if(mc2h_fp != NULL){
-		fprintf(mc2h_fp, "UofS\n");	//first line in file is always "UofS"
-		run_metadata_write(mc2h_filename, "mc_master", "samples_uofs", mode, L, M, totalspan, seednum, runnum, dom_evalue);
-		printf("printed UofS in file '%s'\n", mc2h_filename);
-	}
-	else{
-		printf("file pointer is pointing to NULL\n");
-		exit(1);
+	{
+		Mc2SapSampleWriterConfig writer_config = mc2h_sample_writer_config();
+		mc_2sap_open_sample_file(&writer_config);
 	}
 
 
@@ -5489,74 +5479,14 @@ mc2h_printbuiltwalks_all();
 
 
 int mc2h_reverse_direc(int direc){
-	if(direc==1){
-		return 2;
-	}
-	else if(direc==2){
-		return 1;
-	}
-	else if(direc==3){
-		return 4;
-	}
-	else if(direc==4){
-		return 3;
-	}
-	else if(direc==5){
-		return 6;
-	}
-
-	else if(direc==6){
-		return 5;
-	}
-	else{
-		printf("error in mc2h_reverse_direc(). Exitting\n");
-		exit(1);
-	}
+	return mc_2sap_reverse_direction(direc, "mc2h_reverse_direc");
 }
 
 
 void mc2h_printtofile(){
-	if(mc2h_filetotal>=maxpolys){
-		//need to start new file
-		printf("Finished filling file %lu. It contains %lu 2SAPs. Creating a new one.\n", mc2h_filenum, mc2h_filetotal);
-		fprintf(mc2h_fp, "-999\n");
-		fclose(mc2h_fp);
-		mc2h_filenum++;
-		mkdir("data", 0775);
-	mkdir("data/MonteCarlo", 0775);
-	mkdir("data/MonteCarlo/Ham2SAPs", 0775);
-	mc_checked_snprintf(mc2h_filename, sizeof(mc2h_filename), "data/MonteCarlo/Ham2SAPs/MC2SAPsHamL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2h_filenum);
-		mc2h_fp = fopen(mc2h_filename, "w");	//create or overwrite the file "mc2h_filename
+	Mc2SapSampleWriterConfig writer_config = mc2h_sample_writer_config();
 
-		if(mc2h_fp != NULL){
-			fprintf(mc2h_fp, "UofS\n");	//first line in file is always "UofS"
-			run_metadata_write(mc2h_filename, "mc_master", "samples_uofs", mode, L, M, totalspan, seednum, runnum, dom_evalue);
-			printf("printed UofS in file '%s'\n", mc2h_filename);
-		}
-		else{
-			printf("file pointer is pointing to NULL\n");
-			exit(1);
-		}
-		mc2h_filetotal=0;
-		
-	}
-	//record
-	fprintf(mc2h_fp, "%d %d %d\n", mc2h_built_walks_start[0][0], mc2h_built_walks_start[0][1], mc2h_built_walks_start[0][2]);	//starting point
-	int i=0;
-	while(mc2h_built_walks_direcs[0][i] != 0){
-		fprintf(mc2h_fp, "%d\n", mc2h_built_walks_direcs[0][i]);
-		i++;
-	}
-	fprintf(mc2h_fp, "-111\n");
-
-	fprintf(mc2h_fp, "%d %d %d\n", mc2h_built_walks_start2[0][0], mc2h_built_walks_start2[0][1], mc2h_built_walks_start2[0][2]);	//starting point
-	i=0;
-	while(mc2h_built_walks_direcs2[0][i] != 0){
-		fprintf(mc2h_fp, "%d\n", mc2h_built_walks_direcs2[0][i]);
-		i++;
-	}
-	fprintf(mc2h_fp, "-111\n");
-	mc2h_filetotal++;
+	mc_2sap_write_sample_pair(&writer_config);
 }
 
 
@@ -5569,6 +5499,10 @@ void mc2h_printtofile(){
 
 
 #undef num_outsections
+#undef fp
+#undef filename
+#undef filetotal
+#undef filenum
 
 
 
@@ -5583,132 +5517,44 @@ void mc2h_printtofile(){
 
 
 
+static Mc2SapSampleWriterConfig mc2h_sample_writer_config(void)
+{
+	Mc2SapSampleWriterConfig config;
+
+	memset(&config, 0, sizeof(config));
+	config.fp = &mc2h_fp;
+	config.filename = mc2h_filename;
+	config.filename_size = sizeof(mc2h_filename);
+	config.filetotal = &mc2h_filetotal;
+	config.filenum = &mc2h_filenum;
+	config.outdir = "data/MonteCarlo/Ham2SAPs";
+	config.prefix = "MC2SAPsHam";
+	config.poly1_start = mc2h_built_walks_start[0];
+	config.poly1_directions = mc2h_built_walks_direcs[0];
+	config.poly2_start = mc2h_built_walks_start2[0];
+	config.poly2_directions = mc2h_built_walks_direcs2[0];
+	config.maxpolys = maxpolys;
+	config.mode = mode;
+	config.L = L;
+	config.M = M;
+	config.totalspan = totalspan;
+	config.seednum = seednum;
+	config.runnum = runnum;
+	config.dom_evalue = dom_evalue;
+	return config;
+}
+
 static double mc2h_max_eval_LRvec(double fugacity)
 {
-	McTransitionSpectralInput input;
-
-	memset(&input, 0, sizeof(input));
-	input.max_keynum = max_keynum;
-	input.max_tspans = (unsigned long int)max_tspans;
-	input.num_outsections = mc2h_num_outsections;
-	input.tspans_outsection = mc2h_t_outsection;
-	input.tspans_edges = mc2h_MC_tspans_edges;
-	input.tspans_nrr = mc2h_t_nrr;
-	input.left[0] = mc2h_MC_L_Evector[0];
-	input.left[1] = mc2h_MC_L_Evector[1];
-	input.right[0] = mc2h_MC_R_Evector[0];
-	input.right[1] = mc2h_MC_R_Evector[1];
-	input.force = fval;
-	input.L = L;
-	input.M = M;
-	input.hamiltonian = 1;
-
-	return mc_spectral_max_eval_2sap(&input, fugacity);
+	return mc_2sap_max_eval(max_keynum, (unsigned long int)max_tspans, mc2h_num_outsections,
+		mc2h_t_outsection, mc2h_MC_tspans_edges, mc2h_t_nrr,
+		mc2h_MC_L_Evector, mc2h_MC_R_Evector, fval, L, M, 1, fugacity);
 }
 
-typedef struct Mc2hCreatorSeenNode {
-	char *key;
-	struct Mc2hCreatorSeenNode *next;
-} Mc2hCreatorSeenNode;
-
-#define MC2H_CREATOR_HASH_SIZE 262144
-static Mc2hCreatorSeenNode *mc2h_creator_seen[MC2H_CREATOR_HASH_SIZE];
-
-static unsigned long int mc2h_creator_hash_string(const char *text)
-{
-	unsigned long int h = 14695981039346656037ULL;
-	while (*text) {
-		h ^= (unsigned char)*text++;
-		h *= 1099511628211ULL;
-	}
-	return h;
-}
-
-static char *mc2h_creator_strdup(const char *text)
-{
-	size_t len = strlen(text) + 1;
-	char *copy = (char *)mc_xcalloc(len, sizeof(*copy), "creator key copy");
-	memcpy(copy, text, len);
-	return copy;
-}
-
-static void mc2h_creator_seen_clear(void)
-{
-	unsigned long int i;
-	for (i = 0; i < MC2H_CREATOR_HASH_SIZE; i++) {
-		Mc2hCreatorSeenNode *node = mc2h_creator_seen[i];
-		while (node) {
-			Mc2hCreatorSeenNode *next = node->next;
-			free(node->key);
-			free(node);
-			node = next;
-		}
-		mc2h_creator_seen[i] = NULL;
-	}
-}
-
-static int mc2h_creator_seen_insert(const char *key)
-{
-	unsigned long int bucket = mc2h_creator_hash_string(key) % MC2H_CREATOR_HASH_SIZE;
-	Mc2hCreatorSeenNode *node = mc2h_creator_seen[bucket];
-	while (node) {
-		if (strcmp(node->key, key) == 0) return 0;
-		node = node->next;
-	}
-	node = (Mc2hCreatorSeenNode *)mc_xcalloc(1, sizeof(*node), "creator seen node");
-	node->key = mc2h_creator_strdup(key);
-	node->next = mc2h_creator_seen[bucket];
-	mc2h_creator_seen[bucket] = node;
-	return 1;
-}
-
-static char *mc2h_creator_poly_string(int which)
-{
-	size_t cap = (size_t)(vM * vL * (totalspan + 1) + 8) * 24;
-	char *buf = (char *)mc_xcalloc(cap, sizeof(*buf), "creator polygon string");
-	size_t used = 0;
-	int i = 0;
-
-	used += (size_t)snprintf(buf + used, cap - used, "%d,%d,%d:",
-		which == 0 ? mc2h_built_walks_start[0][0] : mc2h_built_walks_start2[0][0],
-		which == 0 ? mc2h_built_walks_start[0][1] : mc2h_built_walks_start2[0][1],
-		which == 0 ? mc2h_built_walks_start[0][2] : mc2h_built_walks_start2[0][2]);
-	while ((which == 0 ? mc2h_built_walks_direcs[0][i] : mc2h_built_walks_direcs2[0][i]) != 0) {
-		used += (size_t)snprintf(buf + used, cap - used, "%d,",
-			which == 0 ? mc2h_built_walks_direcs[0][i] : mc2h_built_walks_direcs2[0][i]);
-		if (used >= cap) {
-			fprintf(stderr, "Fatal: creator polygon string exceeded buffer\n");
-			exit(EXIT_FAILURE);
-		}
-		i++;
-	}
-	return buf;
-}
-
-static char *mc2h_creator_pair_key(void)
-{
-	char *a = mc2h_creator_poly_string(0);
-	char *b = mc2h_creator_poly_string(1);
-	const char *first = a;
-	const char *second = b;
-	size_t len;
-	char *key;
-
-	if (strcmp(a, b) > 0) {
-		first = b;
-		second = a;
-	}
-	len = strlen(first) + strlen(second) + 2;
-	key = (char *)mc_xcalloc(len, sizeof(*key), "creator pair key");
-	snprintf(key, len, "%s|%s", first, second);
-	free(a);
-	free(b);
-	return key;
-}
-
-static void mc2h_creator_reset_built_walks(void)
+static void mc2h_creator_reset_built_walks(void *user)
 {
 	int i, j;
+	(void)user;
 	for (i = 0; i <= vM * vL / 2 - 1; i++) {
 		for (j = 0; j <= 2; j++) {
 			mc2h_built_walks_start[i][j] = -1;
@@ -5723,9 +5569,10 @@ static void mc2h_creator_reset_built_walks(void)
 	}
 }
 
-static void mc2h_creator_load_left_endhinge(unsigned long int section, int nth_endhinge)
+static void mc2h_creator_load_left_endhinge(void *user, unsigned long int section, int nth_endhinge)
 {
 	int nth_walk, i;
+	(void)user;
 
 	mc2h_num_built_walks = mc2h_Lend_num_walks[section][nth_endhinge];
 	mc2h_num_built_walks2 = mc2h_Lend_num_walks2[section][nth_endhinge];
@@ -5745,207 +5592,66 @@ static void mc2h_creator_load_left_endhinge(unsigned long int section, int nth_e
 	}
 }
 
-static void mc2h_creator_print_one_poly(FILE *out, int which)
+static char *mc2h_creator_pair_key(void *user)
 {
-	int i = 0;
-
-	fprintf(out, "%d %d %d\n",
-		which == 0 ? mc2h_built_walks_start[0][0] : mc2h_built_walks_start2[0][0],
-		which == 0 ? mc2h_built_walks_start[0][1] : mc2h_built_walks_start2[0][1],
-		which == 0 ? mc2h_built_walks_start[0][2] : mc2h_built_walks_start2[0][2]);
-	while ((which == 0 ? mc2h_built_walks_direcs[0][i] : mc2h_built_walks_direcs2[0][i]) != 0) {
-		fprintf(out, "%d\n", which == 0 ? mc2h_built_walks_direcs[0][i] : mc2h_built_walks_direcs2[0][i]);
-		i++;
-	}
-	fprintf(out, "-111\n");
+	(void)user;
+	return mc_2sap_unordered_pair_key(mc2h_built_walks_start[0], mc2h_built_walks_direcs[0],
+		mc2h_built_walks_start2[0], mc2h_built_walks_direcs2[0]);
 }
 
-static void mc2h_creator_print_pair(FILE *out)
+static void mc2h_creator_print_pair(void *user, FILE *out)
 {
-	char *a = mc2h_creator_poly_string(0);
-	char *b = mc2h_creator_poly_string(1);
-	int first = strcmp(a, b) <= 0 ? 0 : 1;
-	free(a);
-	free(b);
-	mc2h_creator_print_one_poly(out, first);
-	mc2h_creator_print_one_poly(out, first == 0 ? 1 : 0);
+	(void)user;
+	mc_2sap_print_unordered_pair(out, mc2h_built_walks_start[0], mc2h_built_walks_direcs[0],
+		mc2h_built_walks_start2[0], mc2h_built_walks_direcs2[0]);
 }
 
-typedef struct Mc2hCreatorContext {
-	FILE *fp;
-	unsigned long int total;
-	unsigned long int file_total;
-	unsigned long int file_num;
-	char outdir[160];
-	char prefix[64];
-	char last_path[512];
-	unsigned long int *sequence_sections;
-	int *sequence_nths;
-} Mc2hCreatorContext;
-
-static void mc2h_creator_open_next_file(Mc2hCreatorContext *ctx)
+static void mc2h_creator_add_transition(void *user, unsigned long int section, int nth_tspan)
 {
-	if (ctx->fp) {
-		fprintf(ctx->fp, "-999\n");
-		fclose(ctx->fp);
-		ctx->fp = NULL;
-	}
-	snprintf(ctx->last_path, sizeof(ctx->last_path), "%s/%sL%dM%dspan%dnum%lu.txt",
-		ctx->outdir, ctx->prefix, L, M, totalspan, ctx->file_num);
-	ctx->fp = fopen(ctx->last_path, "w");
-	if (!ctx->fp) {
-		fprintf(stderr, "Fatal: could not open '%s': %s\n", ctx->last_path, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	fprintf(ctx->fp, "UofS\n");
-	ctx->file_total = 0;
+	(void)user;
+	mc2h_add_to_built_walks(section, nth_tspan);
 }
 
-static void mc2h_creator_prepare_write(Mc2hCreatorContext *ctx, const char *outdir, const char *prefix)
+static void mc2h_creator_add_right_endhinge_cb(void *user, unsigned long int section, int nth_endhinge)
 {
-	snprintf(ctx->outdir, sizeof(ctx->outdir), "%s", outdir);
-	snprintf(ctx->prefix, sizeof(ctx->prefix), "%s", prefix);
-	ctx->file_num = 1;
-	mc2h_creator_open_next_file(ctx);
+	(void)user;
+	mc2h_add_right_endhinge(section, nth_endhinge);
 }
 
-static void mc2h_creator_finish_write(Mc2hCreatorContext *ctx)
-{
-	if (ctx->fp) {
-		fprintf(ctx->fp, "-999\n");
-		fclose(ctx->fp);
-		ctx->fp = NULL;
-	}
-}
-
-static void mc2h_creator_write_pair(Mc2hCreatorContext *ctx)
-{
-	if (!ctx->fp) return;
-	if (ctx->file_total >= (unsigned long int)maxpolys) {
-		ctx->file_num++;
-		mc2h_creator_open_next_file(ctx);
-	}
-	mc2h_creator_print_pair(ctx->fp);
-	ctx->file_total++;
-}
-
-static void mc2h_creator_build_leaf(
-	Mc2hCreatorContext *ctx,
-	unsigned long int left_section,
-	int left_endhinge,
-	int right_endhinge,
-	int sequence_len)
-{
-	int idx;
-	unsigned long int terminal_section;
-	char *key;
-
-	mc2h_creator_reset_built_walks();
-	mc2h_creator_load_left_endhinge(left_section, left_endhinge);
-	for (idx = 0; idx < sequence_len; idx++) {
-		mc2h_add_to_built_walks(ctx->sequence_sections[idx], ctx->sequence_nths[idx]);
-	}
-	terminal_section = mc2h_t_outsection[ctx->sequence_sections[sequence_len - 1]][ctx->sequence_nths[sequence_len - 1]];
-	mc2h_add_right_endhinge(terminal_section, right_endhinge);
-
-	key = mc2h_creator_pair_key();
-	if (mc2h_creator_seen_insert(key)) {
-		mc2h_creator_write_pair(ctx);
-		ctx->total++;
-	}
-	free(key);
-}
-
-static void mc2h_creator_enumerate_paths(
-	Mc2hCreatorContext *ctx,
-	unsigned long int left_section,
-	int left_endhinge,
-	unsigned long int current_section,
-	int depth,
-	int target_depth)
-{
-	unsigned long int nth;
-	if (depth == target_depth) {
-		for (nth = 1; nth <= mc2h_num_right_endhinges[current_section]; nth++) {
-			mc2h_creator_build_leaf(ctx, left_section, left_endhinge, (int)nth, target_depth);
-		}
-		return;
-	}
-	for (nth = 1; nth <= mc2h_num_outsections[current_section]; nth++) {
-		ctx->sequence_sections[depth] = current_section;
-		ctx->sequence_nths[depth] = (int)nth;
-		mc2h_creator_enumerate_paths(ctx, left_section, left_endhinge, mc2h_t_outsection[current_section][nth], depth + 1, target_depth);
-	}
-}
-
-static unsigned long int mc2h_creator_enumerate(Mc2hCreatorContext *write_ctx)
-{
-	Mc2hCreatorContext ctx;
-	unsigned long int section;
-	int left;
-
-	memset(&ctx, 0, sizeof(ctx));
-	if (write_ctx) ctx = *write_ctx;
-	ctx.sequence_sections = (unsigned long int *)mc_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_sections), "creator section sequence");
-	ctx.sequence_nths = (int *)mc_xcalloc((size_t)totalspan, sizeof(*ctx.sequence_nths), "creator transition sequence");
-	mc2h_creator_seen_clear();
-
-	for (section = 1; section <= max_keynum; section++) {
-		for (left = 1; left <= mc2h_num_left_endhinges[section]; left++) {
-			mc2h_creator_enumerate_paths(&ctx, section, left, section, 0, totalspan - 1);
-		}
-	}
-	free(ctx.sequence_sections);
-	free(ctx.sequence_nths);
-	if (write_ctx) {
-		write_ctx->fp = ctx.fp;
-		write_ctx->total = ctx.total;
-		write_ctx->file_total = ctx.file_total;
-		write_ctx->file_num = ctx.file_num;
-		memcpy(write_ctx->last_path, ctx.last_path, sizeof(write_ctx->last_path));
-	}
-	return ctx.total;
-}
+#undef add_right_endhinge
+#undef num_left_endhinges
+#undef num_right_endhinges
+#undef t_outsection
 
 static int mc2h_run_creator_all_after_build(void)
 {
-	char outdir[160];
-	Mc2hCreatorContext write_ctx;
-	unsigned long int count;
+	Mc2SapCreatorConfig config;
 
-	if (totalspan < 2) {
-		fprintf(stderr, "Error: Span (-s) must be at least 2 (received %d).\n", totalspan);
-		return EXIT_FAILURE;
-	}
-
-	count = mc2h_creator_enumerate(NULL);
-	if (!mc2h_creator_force && count > mc2h_creator_limit) {
-		fprintf(stderr,
-			"Refusing to write %lu unordered Ham2SAPs; limit is %lu. Re-run with -C <limit> or -f to force.\n",
-			count, mc2h_creator_limit);
-		mc2h_creator_seen_clear();
-		return EXIT_FAILURE;
-	}
-	mc2h_creator_seen_clear();
-
-	mkdir("data", 0775);
-	mkdir("data/CreatorAll", 0775);
-	snprintf(outdir, sizeof(outdir), "data/CreatorAll/All_Ham2SAPs");
-	mkdir(outdir, 0775);
-	memset(&write_ctx, 0, sizeof(write_ctx));
-	mc2h_creator_prepare_write(&write_ctx, outdir, "AllHam2SAPs");
-	(void)mc2h_creator_enumerate(&write_ctx);
-	mc2h_creator_finish_write(&write_ctx);
-	mc2h_creator_seen_clear();
-	{
-		char metadata_target[256];
-		mc_checked_snprintf(metadata_target, sizeof(metadata_target), "%s/AllHam2SAPsL%dM%dspan%d.summary", outdir, L, M, totalspan);
-		run_metadata_write(metadata_target, "creator_all", "creator_all_summary", mode, L, M, totalspan, seednum, runnum, 0.0);
-	}
-
-	printf("Generated %lu unordered Ham2SAPs of exact span %d in %dx%d tube.\n", count, totalspan, L, M);
-	printf("Wrote %lu file(s) under %s, with at most %d entries per file.\n", write_ctx.file_num, outdir, maxpolys);
-	return EXIT_SUCCESS;
+	memset(&config, 0, sizeof(config));
+	config.max_keynum = max_keynum;
+	config.num_left_endhinges = mc2h_num_left_endhinges;
+	config.num_right_endhinges = mc2h_num_right_endhinges;
+	config.num_outsections = mc2h_num_outsections;
+	config.t_outsection = mc2h_t_outsection;
+	config.totalspan = totalspan;
+	config.L = L;
+	config.M = M;
+	config.mode = mode;
+	config.seednum = seednum;
+	config.runnum = runnum;
+	config.maxpolys = maxpolys;
+	config.limit = mc2h_creator_limit;
+	config.force = mc2h_creator_force;
+	config.outdir = "data/CreatorAll/All_Ham2SAPs";
+	config.prefix = "AllHam2SAPs";
+	config.object_label = "Ham2SAPs";
+	config.reset_built_walks = mc2h_creator_reset_built_walks;
+	config.load_left_endhinge = mc2h_creator_load_left_endhinge;
+	config.add_transition = mc2h_creator_add_transition;
+	config.add_right_endhinge = mc2h_creator_add_right_endhinge_cb;
+	config.pair_key = mc2h_creator_pair_key;
+	config.print_pair = mc2h_creator_print_pair;
+	return mc_2sap_run_creator_all(&config);
 }
 
 int run_integrated_2sap_ham_creator_all(int argc, char *argv[], unsigned long int limit, int force)
