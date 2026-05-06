@@ -173,6 +173,10 @@ Files include:
 
 Mode suffixes are `std`, `ham`, `2sap`, and `2sap_ham`.
 
+Every generated TM result also gets a small `.meta` sidecar with the command,
+mode, lattice, git commit, timestamp, and OpenMP thread count. These metadata
+files are for reproducibility only; they do not change the numeric result files.
+
 ### 2. Monte Carlo Sampling
 
 Use `mc_master` when you want random samples at a target span.
@@ -222,6 +226,10 @@ Calculated transition-indexed eigenvectors go to:
 ```text
 data/MonteCarlo/MC_Evectors/
 ```
+
+Monte Carlo sample and eigenvector files also get `.meta` sidecars with run
+parameters such as command, seed, run number, mode, span, and dominant
+eigenvalue. The UofS coordinate files themselves are unchanged.
 
 ### 3. Exhaustive Exact-Span Generation
 
@@ -354,6 +362,8 @@ make test             # Run a small CSR/eigenvector audit
 make verify           # Run transfer-matrix benchmark table
 make parity-audit     # Run TM and MC parity checks
 make postprocess-test # Run smoke tests for Python post-processing tools
+make quick-check      # Build everything and run fast smoke tests
+make check            # Build everything and run the full local audit suite
 make clean            # Remove build artifacts only: build/ and bin/
 make clean-data       # Remove generated data output trees
 make distclean        # Remove both build artifacts and generated data
@@ -408,6 +418,8 @@ src/
   tm_spectral.c            Shared OpenMP CSR spectral solver for TM
   mc_spectral.c            Transition-indexed spectral solver for 2SAP MC
   mc_sampler_weights.c     Precomputed rejection-sampling weights
+  mc_paths.c               Canonical mode labels, prefixes, and output paths
+  run_metadata.c           Reproducibility sidecars for generated outputs
   mc_builder.c             SAP graph/endhinge discovery for MC
   mc_2sap_integrated.c     Integrated mode 2 sampler
   mc_2sap_ham_integrated.c Integrated mode 3 sampler
@@ -418,6 +430,8 @@ include/
   mc_globals.h             MC globals and PolygonState definition
   mc_spectral.h            2SAP MC spectral interface
   mc_sampler_weights.h     Sampler weight interface
+  mc_paths.h               Mode path/name interface
+  run_metadata.h           Output metadata interface
 
 deps/
   topology/, utils/        Topology and allocation helpers used by the engines

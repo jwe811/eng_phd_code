@@ -1,4 +1,6 @@
 #include "mc_globals.h"
+#include "mc_paths.h"
+#include "run_metadata.h"
 #include "mc_runtime.h"
 
 #include <errno.h>
@@ -382,24 +384,14 @@ static void build_transfer_matrix_graph(void)
 
 static const char *mode_dir_name(void)
 {
-	switch (mode) {
-		case 0: return "All_SAPs";
-		case 1: return "All_HamSAPs";
-		case 2: return "All_2SAPs";
-		case 3: return "All_Ham2SAPs";
-		default: return "All_Unknown";
-	}
+	const McModePaths *paths = mc_mode_paths(mode);
+	return paths ? paths->creator_dir : "All_Unknown";
 }
 
 static const char *mode_file_label(void)
 {
-	switch (mode) {
-		case 0: return "SAPs";
-		case 1: return "HamSAPs";
-		case 2: return "2SAPs";
-		case 3: return "Ham2SAPs";
-		default: return "Unknown";
-	}
+	const McModePaths *paths = mc_mode_paths(mode);
+	return paths ? paths->label : "Unknown";
 }
 
 static int run_sap_creator(const CreatorOptions *options)
@@ -426,12 +418,17 @@ static int run_sap_creator(const CreatorOptions *options)
 	ensure_directory("data/CreatorAll");
 	checked_snprintf(outdir, sizeof(outdir), "data/CreatorAll/%s", mode_dir_name());
 	ensure_directory(outdir);
-	checked_snprintf(prefix, sizeof(prefix), "All%s", mode_file_label());
+	checked_snprintf(prefix, sizeof(prefix), "%s", mc_mode_paths(mode)->creator_prefix);
 
 	memset(&write_ctx, 0, sizeof(write_ctx));
 	creator_prepare_write(&write_ctx, outdir, prefix);
 	(void)enumerate_saps(&write_ctx);
 	creator_finish_write(&write_ctx);
+	{
+		char metadata_target[256];
+		checked_snprintf(metadata_target, sizeof(metadata_target), "%s/%sL%dM%dspan%d.summary", outdir, prefix, L, M, totalspan);
+		run_metadata_write(metadata_target, "creator_all", "creator_all_summary", mode, L, M, totalspan, seednum, runnum, 0.0);
+	}
 
 	printf("Generated %lu %s of exact span %d in %dx%d tube.\n", count, mode_file_label(), totalspan, L, M);
 	printf("Wrote %lu file(s) under %s, with at most %d entries per file.\n", write_ctx.file_num, outdir, maxpolys);
@@ -443,6 +440,7 @@ int main(int argc, char **argv)
 	CreatorOptions options;
 
 	parse_args(argc, argv, &options);
+	run_metadata_set_command(argc, argv);
 	if (mode == 2 || mode == 3) {
 		optind = 1;
 		return mode == 3

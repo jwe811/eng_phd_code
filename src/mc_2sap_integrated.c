@@ -18,7 +18,9 @@
 #include <sys/types.h>
 #include <errno.h>
 
+#include "mc_runtime.h"
 #include "mc_spectral.h"
+#include "run_metadata.h"
 
 extern int L;
 extern int M;
@@ -1000,11 +1002,12 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 	mkdir("data", 0775);
 	mkdir("data/MonteCarlo", 0775);
 	mkdir("data/MonteCarlo/2SAPs", 0775);
-	sprintf(mc2_filename, "data/MonteCarlo/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
+	mc_checked_snprintf(mc2_filename, sizeof(mc2_filename), "data/MonteCarlo/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
 	mc2_fp = fopen(mc2_filename, "w");	//create or overwrite the file "mc2_filename"
 
 	if(mc2_fp != NULL){
 		fprintf(mc2_fp, "UofS\n");	//first line in file is always "UofS"
+		run_metadata_write(mc2_filename, "mc_master", "samples_uofs", mode, L, M, totalspan, seednum, runnum, dom_evalue);
 		printf("printed UofS in file '%s'\n", mc2_filename);
 	}
 	else{
@@ -1034,7 +1037,7 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 //	L_Evector = (double*)malloc(sizeof(double)*(max_tspans+1));
 //	if(L_Evector==NULL){
 //		fprintf(stderr, "Out of memory");
-//		exit(0);
+//		exit(EXIT_FAILURE);
 //	}
 
 //	static double R_Evector[max_tspans+1];
@@ -1054,13 +1057,14 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
     mkdir("data/MonteCarlo", 0775);
     mkdir("data/MonteCarlo/MC_Evectors", 0775);
     char export_fn[128];
-    sprintf(export_fn, "data/MonteCarlo/MC_Evectors/2SAP_R_Evector%s_TS_L%dM%d.txt", (ham_check ? "Ham" : ""), L, M);
+    mc_checked_snprintf(export_fn, sizeof(export_fn), "data/MonteCarlo/MC_Evectors/2SAP_R_Evector%s_TS_L%dM%d.txt", (ham_check ? "Ham" : ""), L, M);
     FILE *export_fp = fopen(export_fn, "w");
     if (export_fp != NULL) {
         for (int i = 1; i <= max_tspans; i++) {
             fprintf(export_fp, "%.15f\n", mc2_MC_R_Evector[0][i]);
         }
         fclose(export_fp);
+        run_metadata_write(export_fn, "mc_master", "right_eigenvector", mode, L, M, totalspan, seednum, runnum, calculated_dom_evalue);
         printf("Calculated eigenvectors exported to %s\n", export_fn);
     }
 
@@ -1099,7 +1103,7 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 	t_two = (double*)malloc(sizeof(double)*(max_tspans+1));
 	if(t_two==NULL){
 		fprintf(stderr, "Out of memory");
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
 
@@ -1481,103 +1485,103 @@ void mc2_conv_to_array(void)
 		mc2_t_start[section_num] = (int***)malloc((mc2_num_outsections[section_num]+1) * sizeof(int**));
 		if (mc2_t_start[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_t_start2[section_num] = (int***)malloc((mc2_num_outsections[section_num]+1) * sizeof(int**));
 		if (mc2_t_start2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		mc2_t_end[section_num] = (int***)malloc((mc2_num_outsections[section_num]+1) * sizeof(int**));
 		if (mc2_t_end[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_t_end2[section_num] = (int***)malloc((mc2_num_outsections[section_num]+1) * sizeof(int**));
 		if (mc2_t_end2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		mc2_t_walks[section_num] = (int***)malloc((mc2_num_outsections[section_num]+1) * sizeof(int**));
 		if (mc2_t_walks[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_t_walks2[section_num] = (int***)malloc((mc2_num_outsections[section_num]+1) * sizeof(int**));
 		if (mc2_t_walks2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		for (i = 1; i <= mc2_num_outsections[section_num]; i++){
 			mc2_t_start[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_t_start[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_t_start2[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_t_start2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			mc2_t_end[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_t_end[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_t_end2[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_t_end2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			mc2_t_walks[section_num][i] = (int**)malloc((vM*vL+1) * sizeof(int*));
 			if (mc2_t_walks[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_t_walks2[section_num][i] = (int**)malloc((vM*vL+1) * sizeof(int*));
 			if (mc2_t_walks2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			for (j = 0; j < 3; j++){
 				mc2_t_start[section_num][i][j] = (int*)malloc(mc2_t_num_walks[section_num][i] * sizeof(int));
 		   		if (mc2_t_start[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_t_start2[section_num][i][j] = (int*)malloc(mc2_t_num_walks2[section_num][i] * sizeof(int));
 		   		if (mc2_t_start2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 
 				mc2_t_end[section_num][i][j] = (int*)malloc(mc2_t_num_walks[section_num][i] * sizeof(int));
 		   		if (mc2_t_end[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_t_end2[section_num][i][j] = (int*)malloc(mc2_t_num_walks2[section_num][i] * sizeof(int));
 		   		if (mc2_t_end2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			for (j = 0; j <= vM*vL; j++){
 				mc2_t_walks[section_num][i][j] = (int*)malloc(mc2_t_num_walks[section_num][i] * sizeof(int));
 		   		if (mc2_t_walks[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_t_walks2[section_num][i][j] = (int*)malloc(mc2_t_num_walks2[section_num][i] * sizeof(int));
 		   		if (mc2_t_walks2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 		}
@@ -1767,138 +1771,138 @@ void mc2_conv_endhinges_to_array(void)
 		mc2_Lend_start[section_num] = (int***)malloc((mc2_num_left_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Lend_start[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_Lend_start2[section_num] = (int***)malloc((mc2_num_left_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Lend_start2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		mc2_Lend_end[section_num] = (int***)malloc((mc2_num_left_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Lend_end[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_Lend_end2[section_num] = (int***)malloc((mc2_num_left_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Lend_end2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		mc2_Lend_walks[section_num] = (int***)malloc((mc2_num_left_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Lend_walks[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_Lend_walks2[section_num] = (int***)malloc((mc2_num_left_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Lend_walks2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 /////////
 		mc2_Rend_start[section_num] = (int***)malloc((mc2_num_right_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Rend_start[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_Rend_start2[section_num] = (int***)malloc((mc2_num_right_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Rend_start2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		mc2_Rend_end[section_num] = (int***)malloc((mc2_num_right_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Rend_end[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_Rend_end2[section_num] = (int***)malloc((mc2_num_right_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Rend_end2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 
 		mc2_Rend_walks[section_num] = (int***)malloc((mc2_num_right_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Rend_walks[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 		mc2_Rend_walks2[section_num] = (int***)malloc((mc2_num_right_endhinges[section_num]+1) * sizeof(int**));
 		if (mc2_Rend_walks2[section_num] == NULL) {
 			fprintf(stderr, "Out of memory");
-			exit(0);
+			exit(EXIT_FAILURE);
 		}
 /////////
 		for (i = 1; i <= mc2_num_left_endhinges[section_num]; i++){
 			mc2_Lend_start[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Lend_start[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_Lend_start2[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Lend_start2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			mc2_Lend_end[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Lend_end[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_Lend_end2[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Lend_end2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			mc2_Lend_walks[section_num][i] = (int**)malloc((vM*vL+1) * sizeof(int*));
 			if (mc2_Lend_walks[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_Lend_walks2[section_num][i] = (int**)malloc((vM*vL+1) * sizeof(int*));
 			if (mc2_Lend_walks2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			for (j = 0; j < 3; j++){
 				mc2_Lend_start[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Lend walk data");
 		   		if (mc2_Lend_start[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_Lend_start2[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Lend walk data2");
 		   		if (mc2_Lend_start2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 
 				mc2_Lend_end[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Lend walk data");
 		   		if (mc2_Lend_end[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_Lend_end2[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Lend walk data2");
 		   		if (mc2_Lend_end2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			for (j = 0; j <= vM*vL; j++){
 				mc2_Lend_walks[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Lend walk data");
 		   		if (mc2_Lend_walks[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			for (j = 0; j <= vM*vL; j++){
 				mc2_Lend_walks2[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Lend walk data2");
 		   		if (mc2_Lend_walks2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 		}
@@ -1907,69 +1911,69 @@ void mc2_conv_endhinges_to_array(void)
 			mc2_Rend_start[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Rend_start[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_Rend_start2[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Rend_start2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			mc2_Rend_end[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Rend_end[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_Rend_end2[section_num][i] = (int**)malloc(3 * sizeof(int*));
 			if (mc2_Rend_end2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			mc2_Rend_walks[section_num][i] = (int**)malloc((vM*vL+1) * sizeof(int*));
 			if (mc2_Rend_walks[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 			mc2_Rend_walks2[section_num][i] = (int**)malloc((vM*vL+1) * sizeof(int*));
 			if (mc2_Rend_walks2[section_num][i] == NULL) {
 				fprintf(stderr, "Out of memory");
-				exit(0);
+				exit(EXIT_FAILURE);
 			}
 
 			for (j = 0; j < 3; j++){
 				mc2_Rend_start[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Rend walk data");
 		   		if (mc2_Rend_start[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_Rend_start2[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Rend walk data2");
 		   		if (mc2_Rend_start2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 
 				mc2_Rend_end[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Rend walk data");
 		   		if (mc2_Rend_end[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_Rend_end2[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Rend walk data2");
 		   		if (mc2_Rend_end2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 			for (j = 0; j <= vM*vL; j++){
 				mc2_Rend_walks[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Rend walk data");
 		   		if (mc2_Rend_walks[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 				mc2_Rend_walks2[section_num][i][j] = (int*)mc2sap_xcalloc(MAX_vMvL + 1, sizeof(int), "Rend walk data2");
 		   		if (mc2_Rend_walks2[section_num][i][j] == NULL) {
 					fprintf(stderr, "Out of memory");
-					exit(0);
+					exit(EXIT_FAILURE);
 				}
 			}
 		}
@@ -5549,11 +5553,12 @@ void mc2_printtofile(){
 		mkdir("data", 0775);
 	mkdir("data/MonteCarlo", 0775);
 	mkdir("data/MonteCarlo/2SAPs", 0775);
-	sprintf(mc2_filename, "data/MonteCarlo/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
+	mc_checked_snprintf(mc2_filename, sizeof(mc2_filename), "data/MonteCarlo/2SAPs/MC2SAPsL%dM%dspan%drun%dnum%lu.txt", L, M, totalspan, runnum, mc2_filenum);
 		mc2_fp = fopen(mc2_filename, "w");	//create or overwrite the file "mc2_filename
 
 		if(mc2_fp != NULL){
 			fprintf(mc2_fp, "UofS\n");	//first line in file is always "UofS"
+			run_metadata_write(mc2_filename, "mc_master", "samples_uofs", mode, L, M, totalspan, seednum, runnum, dom_evalue);
 			printf("printed UofS in file '%s'\n", mc2_filename);
 		}
 		else{
@@ -5960,6 +5965,11 @@ static int mc2_run_creator_all_after_build(void)
 	(void)mc2_creator_enumerate(&write_ctx);
 	mc2_creator_finish_write(&write_ctx);
 	mc2_creator_seen_clear();
+	{
+		char metadata_target[256];
+		mc_checked_snprintf(metadata_target, sizeof(metadata_target), "%s/All2SAPsL%dM%dspan%d.summary", outdir, L, M, totalspan);
+		run_metadata_write(metadata_target, "creator_all", "creator_all_summary", mode, L, M, totalspan, seednum, runnum, 0.0);
+	}
 
 	printf("Generated %lu unordered 2SAPs of exact span %d in %dx%d tube.\n", count, totalspan, L, M);
 	printf("Wrote %lu file(s) under %s, with at most %d entries per file.\n", write_ctx.file_num, outdir, maxpolys);

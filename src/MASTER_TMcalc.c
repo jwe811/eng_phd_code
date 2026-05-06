@@ -24,6 +24,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include <sys/stat.h>
+#include "run_metadata.h"
 #include "tm_spectral.h"
 
 /* Forward Declarations */
@@ -604,6 +605,7 @@ void export_eigenvectors(void) {
             }
         }
         fclose(fp);
+        run_metadata_write(fn, "tm_master", "transition_indexed_right_eigenvector", mode, lat_L, lat_M, -1, 0, 0, 0.0);
         printf("[Phase 3] Transition-indexed eigenvector exported to %s\n", fn);
         return;
     }
@@ -614,6 +616,8 @@ void export_eigenvectors(void) {
     FILE *fp1 = xfopen(fn1, "w"), *fp2 = xfopen(fn2, "w");
     for(unsigned long int i=1; i<=actual_max_states; i++) { fprintf(fp1, "%.15f\n", L_Evector[0][i]); fprintf(fp2, "%.15f\n", R_Evector[0][i]); }
     fclose(fp1); fclose(fp2);
+    run_metadata_write(fn1, "tm_master", "left_eigenvector", mode, lat_L, lat_M, -1, 0, 0, 0.0);
+    run_metadata_write(fn2, "tm_master", "right_eigenvector", mode, lat_L, lat_M, -1, 0, 0, 0.0);
 }
 
 void export_matrix(void) {
@@ -632,6 +636,7 @@ void export_matrix(void) {
     checked_fwrite(csr_out_states, sizeof(unsigned long int), total_transitions + 1, fp, "CSR out states");
     checked_fwrite(csr_edges, sizeof(unsigned long int), total_transitions + 1, fp, "CSR edge weights");
     fclose(fp);
+    run_metadata_write(fn, "tm_master", "csr_matrix", mode, lat_L, lat_M, -1, 0, 0, 0.0);
 }
 
 void cleanup_resources(void) {
@@ -676,6 +681,7 @@ void print_usage(char *prog) {
 
 int main(int argc, char **argv) {
     int opt;
+    run_metadata_set_command(argc, argv);
     while ((opt = getopt(argc, argv, "L:M:m:S:K:c:dx:Eh")) != -1) {
         char *endptr;
         switch (opt) {

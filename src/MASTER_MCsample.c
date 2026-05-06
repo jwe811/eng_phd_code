@@ -1,5 +1,7 @@
 #include "mc_globals.h"
+#include "mc_paths.h"
 #include "mc_sampler_weights.h"
+#include "run_metadata.h"
 #include "../include/marsaglia.h"
 #include <errno.h>
 #include <limits.h>
@@ -86,9 +88,10 @@ double generate_evectors() {
 	if (export_fp != NULL) {
 		for (int i = 1; i <= (int)num_tspans; i++) {
 			fprintf(export_fp, "%.15f\n", R_Evector_solve[0][i]);
-		}
-		fclose(export_fp);
-		printf("Calculated eigenvectors exported to %s\n", export_fn);
+			}
+			fclose(export_fp);
+			run_metadata_write(export_fn, "mc_master", "right_eigenvector", mode, L, M, totalspan, seednum, runnum, calculated_evalue);
+			printf("Calculated eigenvectors exported to %s\n", export_fn);
 	}
 	return calculated_evalue;
 }
@@ -357,7 +360,8 @@ void run_rejection_sampler() {
 
 	printf("\nNOW SAMPLING: %d samples from L=%d, M=%d, span=%d%s\n", samplesize, L, M, totalspan, (ham_check ? " (Hamiltonian)" : ""));
 
-	const char *file_prefix = (ham_check) ? "MCpolysHam" : "MCpolys";
+	const McModePaths *paths = mc_mode_paths(mode);
+	const char *file_prefix = paths ? paths->sample_prefix : "MCpolys";
 	ensure_directory("data");
 	ensure_directory("data/MonteCarlo");
 	ensure_directory(output_dir);
@@ -402,6 +406,7 @@ void run_rejection_sampler() {
 	fp = fopen(filename, "w");
 	if(fp != NULL){
 		fprintf(fp, "UofS\n");
+		run_metadata_write(filename, "mc_master", "samples_uofs", mode, L, M, totalspan, seednum, runnum, dom_evalue);
 		printf("printed UofS in file '%s'\n", filename);
 	} else {
 		fprintf(stderr, "Could not open '%s' for writing: %s\n", filename, strerror(errno));
@@ -543,6 +548,7 @@ void free_sampler_memory() {
 
 int main(int argc, char *argv[]) {
 	parse_args(argc, argv);
+	run_metadata_set_command(argc, argv);
 
 	if (L < 0 || M < 0) {
 		fprintf(stderr, "Error: L and M must be non-negative (received L=%d, M=%d).\n", L, M);
@@ -582,10 +588,8 @@ int main(int argc, char *argv[]) {
 	set_system_params();
 	allocate_globals();
 
-	if (mode == 1) output_dir = "data/MonteCarlo/HamSAPs";
-	else if (mode == 2) output_dir = "data/MonteCarlo/2SAPs";
-	else if (mode == 3) output_dir = "data/MonteCarlo/Ham2SAPs";
-	else output_dir = "data/MonteCarlo/SAPs";
+	const McModePaths *paths = mc_mode_paths(mode);
+	output_dir = (char *)(paths ? paths->sample_dir : "data/MonteCarlo/SAPs");
 
 	unsigned int seed=seednum;
 	initran_(&seed);
