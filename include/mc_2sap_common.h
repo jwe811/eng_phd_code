@@ -11,6 +11,15 @@ typedef struct Mc2SapPairMap {
 	size_t capacity;
 } Mc2SapPairMap;
 
+typedef struct Mc2SapModeSpec {
+	int hamiltonian;
+	const char *sample_outdir;
+	const char *sample_prefix;
+	const char *creator_outdir;
+	const char *creator_prefix;
+	const char *creator_object_label;
+} Mc2SapModeSpec;
+
 typedef struct Mc2SapCreatorConfig {
 	unsigned long int max_keynum;
 	unsigned long int *num_left_endhinges;
@@ -61,9 +70,12 @@ typedef struct Mc2SapSampleWriterConfig {
 } Mc2SapSampleWriterConfig;
 
 void mc_2sap_set_system_params(int is_hamiltonian);
+const Mc2SapModeSpec *mc_2sap_mode_spec(int is_hamiltonian);
 void mc_2sap_ignore_system_result(const char *command);
 int ***mc_2sap_alloc_int3_table(unsigned long entries, int components, const unsigned int *widths, const char *label);
 int ***mc_2sap_alloc_int3_fixed(unsigned long entries, int components, unsigned int width, const char *label);
+void mc_2sap_init_int_rows(int **rows, size_t row_count, size_t width, const char *label);
+int **mc_2sap_alloc_int_rows(size_t row_count, size_t width, const char *label);
 int mc_2sap_reverse_direction(int direction, const char *caller_name);
 void mc_2sap_open_sample_file(const Mc2SapSampleWriterConfig *config);
 void mc_2sap_write_sample_pair(const Mc2SapSampleWriterConfig *config);

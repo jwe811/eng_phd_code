@@ -367,11 +367,16 @@ make creator          # Build only bin/creator_all
 make test             # Run a small CSR/eigenvector audit
 make verify           # Run transfer-matrix benchmark table
 make parity-audit     # Run TM, MC, and CreatorAll parity checks
+make parity-audit-slow # Add deterministic multi-sample MC parity cases
 make postprocess-test # Run smoke tests for Python post-processing tools
 make cli-test         # Check clear failures for invalid CLI inputs
 make bench            # Run small runtime benchmarks
 make quick-check      # Build everything and run fast smoke tests
 make check            # Build everything and run the full local audit suite
+make check-slow       # Run check plus the slower parity cases
+make debug            # Rebuild with -O0 -g3
+make asan             # Rebuild with address/undefined-behavior sanitizers
+make profile          # Rebuild with profiling flags
 make clean            # Remove build artifacts only: build/ and bin/
 make clean-data       # Remove generated data output trees
 make distclean        # Remove both build artifacts and generated data
@@ -432,7 +437,7 @@ src/
   mc_builder.c             SAP graph/endhinge discovery for MC
   mc_2sap_integrated.c     Integrated mode 2 sampler
   mc_2sap_ham_integrated.c Integrated mode 3 sampler
-  mc_legacy/               Source-level legacy helpers still included by MC
+  mc_helpers/              Active MC helper sources with older global assumptions
 
 include/
   tm_runtime.h             TM runtime helpers and exact section hash table
@@ -441,7 +446,7 @@ include/
   mc_spectral.h            2SAP MC spectral interface
   mc_sampler_weights.h     Sampler weight interface
   mc_paths.h               Mode path/name interface
-  mc_2sap_common.h         Shared helpers for 2SAP/Ham2SAP samplers
+  mc_2sap_common.h         Shared helpers for 2SAP/Ham2SAP engines
   run_metadata.h           Output metadata interface
 
 deps/

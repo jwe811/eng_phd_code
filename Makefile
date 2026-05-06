@@ -10,7 +10,9 @@ LEGACY_WARNFLAGS = $(COMMON_WARNFLAGS) -Wno-sign-compare -Wno-shadow
 
 # Base CFLAGS
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-CFLAGS_BASE = -O3 -I$(INCDIR) -DGIT_COMMIT=\"$(GIT_COMMIT)\" -lm -fopenmp
+OPTFLAGS ?= -O3
+CFLAGS_EXTRA ?=
+CFLAGS_BASE = $(strip $(OPTFLAGS) -I$(INCDIR) -DGIT_COMMIT=\"$(GIT_COMMIT)\" -lm -fopenmp $(CFLAGS_EXTRA))
 STRICT_CFLAGS = $(CFLAGS_BASE) $(STRICT_WARNFLAGS)
 MC_CFLAGS = $(CFLAGS_BASE) $(LEGACY_WARNFLAGS)
 GEN_CFLAGS = $(CFLAGS_BASE) $(LEGACY_WARNFLAGS) -Wno-unused-variable -Wno-unused-parameter -Wno-unused-result -Wno-misleading-indentation -I$(SRCDIR)
@@ -35,14 +37,14 @@ CREATOR_SRC = $(SRCDIR)/MASTER_CreatorAll.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/m
               $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_paths.c $(SRCDIR)/mc_2sap_common.c \
               $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c \
               $(SRCDIR)/run_metadata.c
-MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard $(SRCDIR)/mc_legacy/*/*.c) $(wildcard deps/utils/*.c)
+MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard $(SRCDIR)/mc_helpers/*/*.c) $(wildcard deps/utils/*.c)
 
 # Object files
 TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
 CREATOR_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.creator.o, $(CREATOR_SRC))
 
-.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit postprocess-test cli-test bench quick-check check directories
+.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit parity-audit-slow postprocess-test cli-test bench quick-check check check-slow debug asan profile directories
 
 all: directories $(TM_OUT) $(MC_OUT) $(CREATOR_OUT)
 
@@ -96,6 +98,9 @@ verify: directories $(TM_OUT)
 parity-audit: all
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/parity_audit.py --no-build
 
+parity-audit-slow: all
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/parity_audit.py --no-build --slow
+
 postprocess-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/postprocess_smoke.py
 
@@ -108,3 +113,17 @@ bench: all
 quick-check: all postprocess-test cli-test
 
 check: all postprocess-test cli-test parity-audit
+
+check-slow: all postprocess-test cli-test parity-audit-slow
+
+debug:
+	$(MAKE) clean
+	$(MAKE) all OPTFLAGS="-O0 -g3" CFLAGS_EXTRA="-DDEBUG"
+
+asan:
+	$(MAKE) clean
+	$(MAKE) all OPTFLAGS="-O1 -g3" CFLAGS_EXTRA="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+profile:
+	$(MAKE) clean
+	$(MAKE) all OPTFLAGS="-O3 -g" CFLAGS_EXTRA="-pg"

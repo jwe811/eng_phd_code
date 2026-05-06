@@ -9,9 +9,11 @@ more than cosmetic rewrites. Prefer small, parity-checked refactors.
 - `src/MASTER_MCsample.c` owns the modern Monte Carlo entry point for modes 0
   and 1 and dispatches modes 2 and 3 to integrated source-level 2SAP engines.
 - `src/MASTER_CreatorAll.c` owns exhaustive exact-span generation.
-- `src/mc_legacy/` contains source files that are still active dependencies,
+- `src/mc_helpers/` contains source files that are still active dependencies,
   but are isolated because they retain archival global-state assumptions.
-- `src/mc_2sap_common.c` holds shared helpers for 2SAP/Ham2SAP mode support.
+- `src/mc_2sap_common.c` holds shared helpers for 2SAP/Ham2SAP mode support:
+  spectral setup, sample writing, exhaustive CreatorAll traversal, and
+  unordered pair formatting.
 
 ## Refactor Rules
 
@@ -27,8 +29,10 @@ more than cosmetic rewrites. Prefer small, parity-checked refactors.
 
 ## Next Good Targets
 
-- Move 2SAP and Ham2SAP engine state into a shared `Mc2SapEngine` struct.
-- Extract CreatorAll output logic shared by standard and Hamiltonian 2SAP.
+- Continue moving remaining 2SAP and Ham2SAP globals behind shared config/view
+  structs. `Mc2SapModeSpec`, `Mc2SapCreatorConfig`, and
+  `Mc2SapSampleWriterConfig` are the current migration points.
 - Replace fixed 2SAP capacities with validated runtime capacities where the
-  archival math allows it.
+  archival math allows it. The current archival presets are centralized in
+  `src/mc_2sap_common.c`.
 - Continue replacing repeated linear key lookups with exact hash tables.

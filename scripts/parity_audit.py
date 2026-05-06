@@ -139,6 +139,73 @@ MC_BENCHMARKS = (
     ),
 )
 
+SLOW_MC_BENCHMARKS = (
+    MonteCarloBenchmark(
+        L=1,
+        M=1,
+        span=2,
+        samples=2,
+        mode=0,
+        name="standard-slow",
+        run=401,
+        seed=227101,
+        expected_eigenvalue=7.0,
+        eigen_tolerance=1e-14,
+        reject_first=1,
+        reject_last=5,
+        output_path="data/MonteCarlo/SAPs/MCpolysL1M1span2run401num1.txt",
+        output_sha256="a4addc34317a876704f178cdde56ecec4faa66c313614a06cf52866d49ac9332",
+    ),
+    MonteCarloBenchmark(
+        L=1,
+        M=1,
+        span=2,
+        samples=2,
+        mode=1,
+        name="hamiltonian-slow",
+        run=402,
+        seed=227102,
+        expected_eigenvalue=3.732050852321649,
+        eigen_tolerance=1e-6,
+        reject_first=0,
+        reject_last=0,
+        output_path="data/MonteCarlo/HamSAPs/MCpolysHamL1M1span2run402num1.txt",
+        output_sha256="e5e501396cb1d2c5482e033d175fbb504524afa112a59d8e5eccd664b90827a4",
+    ),
+    MonteCarloBenchmark(
+        L=2,
+        M=1,
+        span=2,
+        samples=2,
+        mode=2,
+        name="2sap-slow",
+        run=403,
+        seed=822101,
+        expected_eigenvalue=9.455960990693537,
+        eigen_tolerance=5e-14,
+        reject_first=5,
+        reject_last=9,
+        output_path="data/MonteCarlo/2SAPs/MC2SAPsL2M1span2run403num1.txt",
+        output_sha256="e1495ecffc13b2eb5f5a29980915870f0a5be2f670feb659cad7d9d77df753c6",
+    ),
+    MonteCarloBenchmark(
+        L=2,
+        M=1,
+        span=2,
+        samples=2,
+        mode=3,
+        name="2sap_ham-slow",
+        run=404,
+        seed=931251,
+        expected_eigenvalue=5.534148126030995,
+        eigen_tolerance=5e-14,
+        reject_first=4,
+        reject_last=2,
+        output_path="data/MonteCarlo/Ham2SAPs/MC2SAPsHamL2M1span2run404num1.txt",
+        output_sha256="174de6752c3ec70c3fcd4d294e1a9b6341fb5954fd5151b51209203864c07c96",
+    ),
+)
+
 
 CREATOR_BENCHMARKS = (
     CreatorAllBenchmark(
@@ -416,6 +483,7 @@ def main() -> int:
     parser.add_argument("--tm-only", action="store_true", help="Run only transfer-matrix benchmarks.")
     parser.add_argument("--mc-only", action="store_true", help="Run only Monte Carlo sampler benchmarks.")
     parser.add_argument("--creator-only", action="store_true", help="Run only CreatorAll benchmarks.")
+    parser.add_argument("--slow", action="store_true", help="Include slower deterministic multi-sample MC benchmarks.")
     parser.add_argument("--quiet", action="store_true", help="Suppress command output unless a test fails.")
     args = parser.parse_args()
 
@@ -427,15 +495,17 @@ def main() -> int:
         run_command(["make", "all"], quiet=args.quiet)
 
     failures = 0
+    mc_benchmarks = MC_BENCHMARKS + (SLOW_MC_BENCHMARKS if args.slow else ())
+
     if args.creator_only:
         failures += audit_creator_all(CREATOR_BENCHMARKS, quiet=args.quiet)
     elif args.tm_only:
         failures += audit_transfer_matrix(TM_BENCHMARKS, quiet=args.quiet)
     elif args.mc_only:
-        failures += audit_monte_carlo(MC_BENCHMARKS, quiet=args.quiet)
+        failures += audit_monte_carlo(mc_benchmarks, quiet=args.quiet)
     else:
         failures += audit_transfer_matrix(TM_BENCHMARKS, quiet=args.quiet)
-        failures += audit_monte_carlo(MC_BENCHMARKS, quiet=args.quiet)
+        failures += audit_monte_carlo(mc_benchmarks, quiet=args.quiet)
         failures += audit_creator_all(CREATOR_BENCHMARKS, quiet=args.quiet)
 
     if failures:

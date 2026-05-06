@@ -43,3 +43,14 @@ Full local checks:
 ```bash
 make check
 ```
+
+Slower deterministic Monte Carlo checks:
+
+```bash
+make parity-audit-slow
+python3 scripts/parity_audit.py --no-build --mc-only --slow
+```
+
+The slow suite repeats the four Monte Carlo modes with two samples per run and
+separate seeds. It is useful after memory-layout or sampler-state refactors,
+where a single-sample golden file can miss sequencing mistakes.

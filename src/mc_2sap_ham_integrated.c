@@ -3623,48 +3623,13 @@ struct hinge_span* mc2h_newhinge(unsigned int numberofwalks, unsigned int number
 {
 	struct hinge_span *nextnewhinge;
 
-	nextnewhinge = ((struct hinge_span *) calloc(1, sizeof(struct hinge_span)));
-	if (nextnewhinge == NULL) {
-		fprintf(stderr, "unable to allocate memory");
-		exit(1);
-	}
-	int i,j;
-	for(i=0; i<=vM*vL-1; i++){
-		nextnewhinge->hedges[i]=0;
-	}
-
-	//allocate space for start, end, and walks
-	for(i=0; i<=2; i++){
-		nextnewhinge->start[i] = mc2h_int_vecalloc(0,numberofwalks-1);
-		nextnewhinge->end[i] = mc2h_int_vecalloc(0,numberofwalks-1);
-		nextnewhinge->start2[i] = mc2h_int_vecalloc(0,numberofwalks2-1);
-		nextnewhinge->end2[i] = mc2h_int_vecalloc(0,numberofwalks2-1);
-	}
-	for(i=0; i<=vM*vL; i++){
-		nextnewhinge->walks[i] = mc2h_int_vecalloc(0,numberofwalks-1);
-		nextnewhinge->walks2[i] = mc2h_int_vecalloc(0,numberofwalks2-1);
-	}
-
-	//initialize start, end, and walks to all zeros
-	for(i=0; i<=numberofwalks-1; i++){
-		for(j=0; j<=2; j++){
-			nextnewhinge->start[j][i]=0;
-			nextnewhinge->end[j][i]=0;
-		}
-		for(j=0; j<=vM*vL; j++){
-			nextnewhinge->walks[j][i]=0;
-		}
-	}
-	//initialize start, end, and walks to all zeros
-	for(i=0; i<=numberofwalks2-1; i++){
-		for(j=0; j<=2; j++){
-			nextnewhinge->start2[j][i]=0;
-			nextnewhinge->end2[j][i]=0;
-		}
-		for(j=0; j<=vM*vL; j++){
-			nextnewhinge->walks2[j][i]=0;
-		}
-	}
+	nextnewhinge = (struct hinge_span *)mc_xcalloc(1, sizeof(struct hinge_span), "Ham2SAP hinge span");
+	mc_2sap_init_int_rows(nextnewhinge->start, 3, numberofwalks, "Ham2SAP hinge starts");
+	mc_2sap_init_int_rows(nextnewhinge->end, 3, numberofwalks, "Ham2SAP hinge ends");
+	mc_2sap_init_int_rows(nextnewhinge->start2, 3, numberofwalks2, "Ham2SAP hinge starts2");
+	mc_2sap_init_int_rows(nextnewhinge->end2, 3, numberofwalks2, "Ham2SAP hinge ends2");
+	mc_2sap_init_int_rows(nextnewhinge->walks, (size_t)vM * (size_t)vL + 1, numberofwalks, "Ham2SAP hinge walks");
+	mc_2sap_init_int_rows(nextnewhinge->walks2, (size_t)vM * (size_t)vL + 1, numberofwalks2, "Ham2SAP hinge walks2");
 
 	return nextnewhinge;
 }
@@ -3677,42 +3642,13 @@ struct endhinge* mc2h_newendhinge(unsigned int numberofwalks, unsigned int numbe
 	struct endhinge *nextnewendhinge;
 	unsigned int max_walks = numberofwalks > numberofwalks2 ? numberofwalks : numberofwalks2;
 
-	nextnewendhinge = ((struct endhinge *) calloc(1, sizeof(struct endhinge)));
-	if (nextnewendhinge == NULL) {
-		fprintf(stderr, "unable to allocate memory");
-		exit(1);
-	}
-	int i,j;
-
-	for(i=0; i<=vM*vL-1; i++){
-		nextnewendhinge->hedges[i]=0;
-	}
-
-	//allocate space for start, end, and walks
-	for(i=0; i<=2; i++){
-		nextnewendhinge->start[i] = mc2h_int_vecalloc(0,numberofwalks-1);
-		nextnewendhinge->end[i] = mc2h_int_vecalloc(0,numberofwalks-1);
-		nextnewendhinge->start2[i] = mc2h_int_vecalloc(0,max_walks-1);
-		nextnewendhinge->end2[i] = mc2h_int_vecalloc(0,max_walks-1);
-	}
-	for(i=0; i<=vM*vL; i++){
-		nextnewendhinge->walks[i] = mc2h_int_vecalloc(0,numberofwalks-1);
-		nextnewendhinge->walks2[i] = mc2h_int_vecalloc(0,max_walks-1);
-	}
-
-	//initialize start, end, and walks to all zeros
-	for(i=0; i<=numberofwalks-1; i++){
-		for(j=0; j<=2; j++){
-			nextnewendhinge->start[j][i]=0;
-			nextnewendhinge->end[j][i]=0;
-			nextnewendhinge->start2[j][i]=0;
-			nextnewendhinge->end2[j][i]=0;
-		}
-		for(j=0; j<=vM*vL; j++){
-			nextnewendhinge->walks[j][i]=0;
-			nextnewendhinge->walks2[j][i]=0;
-		}
-	}
+	nextnewendhinge = (struct endhinge *)mc_xcalloc(1, sizeof(struct endhinge), "Ham2SAP endhinge");
+	mc_2sap_init_int_rows(nextnewendhinge->start, 3, numberofwalks, "Ham2SAP endhinge starts");
+	mc_2sap_init_int_rows(nextnewendhinge->end, 3, numberofwalks, "Ham2SAP endhinge ends");
+	mc_2sap_init_int_rows(nextnewendhinge->start2, 3, max_walks, "Ham2SAP endhinge starts2");
+	mc_2sap_init_int_rows(nextnewendhinge->end2, 3, max_walks, "Ham2SAP endhinge ends2");
+	mc_2sap_init_int_rows(nextnewendhinge->walks, (size_t)vM * (size_t)vL + 1, numberofwalks, "Ham2SAP endhinge walks");
+	mc_2sap_init_int_rows(nextnewendhinge->walks2, (size_t)vM * (size_t)vL + 1, max_walks, "Ham2SAP endhinge walks2");
 
 	return nextnewendhinge;
 }
@@ -5520,6 +5456,7 @@ void mc2h_printtofile(){
 static Mc2SapSampleWriterConfig mc2h_sample_writer_config(void)
 {
 	Mc2SapSampleWriterConfig config;
+	const Mc2SapModeSpec *mode_spec = mc_2sap_mode_spec(1);
 
 	memset(&config, 0, sizeof(config));
 	config.fp = &mc2h_fp;
@@ -5527,8 +5464,8 @@ static Mc2SapSampleWriterConfig mc2h_sample_writer_config(void)
 	config.filename_size = sizeof(mc2h_filename);
 	config.filetotal = &mc2h_filetotal;
 	config.filenum = &mc2h_filenum;
-	config.outdir = "data/MonteCarlo/Ham2SAPs";
-	config.prefix = "MC2SAPsHam";
+	config.outdir = mode_spec->sample_outdir;
+	config.prefix = mode_spec->sample_prefix;
 	config.poly1_start = mc2h_built_walks_start[0];
 	config.poly1_directions = mc2h_built_walks_direcs[0];
 	config.poly2_start = mc2h_built_walks_start2[0];
@@ -5548,7 +5485,7 @@ static double mc2h_max_eval_LRvec(double fugacity)
 {
 	return mc_2sap_max_eval(max_keynum, (unsigned long int)max_tspans, mc2h_num_outsections,
 		mc2h_t_outsection, mc2h_MC_tspans_edges, mc2h_t_nrr,
-		mc2h_MC_L_Evector, mc2h_MC_R_Evector, fval, L, M, 1, fugacity);
+		mc2h_MC_L_Evector, mc2h_MC_R_Evector, fval, L, M, mc_2sap_mode_spec(1)->hamiltonian, fugacity);
 }
 
 static void mc2h_creator_reset_built_walks(void *user)
@@ -5626,6 +5563,7 @@ static void mc2h_creator_add_right_endhinge_cb(void *user, unsigned long int sec
 static int mc2h_run_creator_all_after_build(void)
 {
 	Mc2SapCreatorConfig config;
+	const Mc2SapModeSpec *mode_spec = mc_2sap_mode_spec(1);
 
 	memset(&config, 0, sizeof(config));
 	config.max_keynum = max_keynum;
@@ -5642,9 +5580,9 @@ static int mc2h_run_creator_all_after_build(void)
 	config.maxpolys = maxpolys;
 	config.limit = mc2h_creator_limit;
 	config.force = mc2h_creator_force;
-	config.outdir = "data/CreatorAll/All_Ham2SAPs";
-	config.prefix = "AllHam2SAPs";
-	config.object_label = "Ham2SAPs";
+	config.outdir = mode_spec->creator_outdir;
+	config.prefix = mode_spec->creator_prefix;
+	config.object_label = mode_spec->creator_object_label;
 	config.reset_built_walks = mc2h_creator_reset_built_walks;
 	config.load_left_endhinge = mc2h_creator_load_left_endhinge;
 	config.add_transition = mc2h_creator_add_transition;

@@ -17,59 +17,55 @@ extern int max_tspans;
 extern unsigned long int max_keynum;
 extern double dom_evalue;
 
+typedef struct Mc2SapSystemPreset {
+	int hamiltonian;
+	int M;
+	int L;
+	int max_sections;
+	unsigned long int max_keynum;
+	int max_tspans;
+	double dom_evalue;
+} Mc2SapSystemPreset;
+
+static const Mc2SapModeSpec MC_2SAP_MODE_SPECS[] = {
+	{0, "data/MonteCarlo/2SAPs", "MC2SAPs", "data/CreatorAll/All_2SAPs", "All2SAPs", "2SAPs"},
+	{1, "data/MonteCarlo/Ham2SAPs", "MC2SAPsHam", "data/CreatorAll/All_Ham2SAPs", "AllHam2SAPs", "Ham2SAPs"},
+};
+
+static const Mc2SapSystemPreset MC_2SAP_SYSTEM_PRESETS[] = {
+	{0, 1, 2, 73, 152, 1048, 9.455960990693537},
+	{0, 1, 3, 742, 4048, 108410, 65.012508345749453},
+	{0, 1, 4, 9309, 108386, 9419930, 380.824254675661734},
+	{0, 2, 2, 2619, 21546, 1126578, 180.511702878389116},
+	{1, 1, 2, 73, 152, 490, 5.534148126030995},
+	{1, 1, 3, 742, 4048, 37454, 24.378235811209002},
+	{1, 1, 4, 9309, 108386, 2598620, 97.848097677835298},
+	{1, 2, 2, 2619, 21540, 495792, 53.686533141903084},
+};
+
 void mc_2sap_set_system_params(int is_hamiltonian)
 {
-	if (is_hamiltonian) {
-		if (M == 1 && L == 2) {
-			max_sections = 73;
-			max_keynum = 152;
-			max_tspans = 490;
-			dom_evalue = 5.534148126030995;
-		} else if (M == 1 && L == 3) {
-			max_sections = 742;
-			max_keynum = 4048;
-			max_tspans = 37454;
-			dom_evalue = 24.378235811209002;
-		} else if (M == 1 && L == 4) {
-			max_sections = 9309;
-			max_keynum = 108386;
-			max_tspans = 2598620;
-			dom_evalue = 97.848097677835298;
-		} else if (M == 2 && L == 2) {
-			max_sections = 2619;
-			max_keynum = 21540;
-			max_tspans = 495792;
-			dom_evalue = 53.686533141903084;
-		} else {
-			fprintf(stderr, "Unsupported Hamiltonian 2SAP L and M values (%d, %d).\n", L, M);
-			exit(EXIT_FAILURE);
-		}
-	} else {
-		if (M == 1 && L == 2) {
-			max_sections = 73;
-			max_keynum = 152;
-			max_tspans = 1048;
-			dom_evalue = 9.455960990693537;
-		} else if (M == 1 && L == 3) {
-			max_sections = 742;
-			max_keynum = 4048;
-			max_tspans = 108410;
-			dom_evalue = 65.012508345749453;
-		} else if (M == 1 && L == 4) {
-			max_sections = 9309;
-			max_keynum = 108386;
-			max_tspans = 9419930;
-			dom_evalue = 380.824254675661734;
-		} else if (M == 2 && L == 2) {
-			max_sections = 2619;
-			max_keynum = 21546;
-			max_tspans = 1126578;
-			dom_evalue = 180.511702878389116;
-		} else {
-			fprintf(stderr, "Unsupported 2SAP L and M values (%d, %d).\n", L, M);
-			exit(EXIT_FAILURE);
+	size_t i;
+
+	for (i = 0; i < sizeof(MC_2SAP_SYSTEM_PRESETS) / sizeof(MC_2SAP_SYSTEM_PRESETS[0]); i++) {
+		const Mc2SapSystemPreset *preset = &MC_2SAP_SYSTEM_PRESETS[i];
+
+		if (preset->hamiltonian == (is_hamiltonian ? 1 : 0) && preset->M == M && preset->L == L) {
+			max_sections = preset->max_sections;
+			max_keynum = preset->max_keynum;
+			max_tspans = preset->max_tspans;
+			dom_evalue = preset->dom_evalue;
+			return;
 		}
 	}
+	fprintf(stderr, "Unsupported %s2SAP L and M values (%d, %d).\n",
+		is_hamiltonian ? "Hamiltonian " : "", L, M);
+	exit(EXIT_FAILURE);
+}
+
+const Mc2SapModeSpec *mc_2sap_mode_spec(int is_hamiltonian)
+{
+	return &MC_2SAP_MODE_SPECS[is_hamiltonian ? 1 : 0];
 }
 
 void mc_2sap_ignore_system_result(const char *command)
@@ -149,6 +145,26 @@ int ***mc_2sap_alloc_int3_fixed(unsigned long entries, int components, unsigned 
 	}
 
 	return table;
+}
+
+void mc_2sap_init_int_rows(int **rows, size_t row_count, size_t width, const char *label)
+{
+	int *data;
+	size_t row;
+	size_t safe_width = width ? width : 1;
+
+	data = (int *)mc_xcalloc(row_count * safe_width, sizeof(*data), label);
+	for (row = 0; row < row_count; row++) {
+		rows[row] = &data[row * safe_width];
+	}
+}
+
+int **mc_2sap_alloc_int_rows(size_t row_count, size_t width, const char *label)
+{
+	int **rows = (int **)mc_xcalloc(row_count ? row_count : 1, sizeof(*rows), label);
+
+	mc_2sap_init_int_rows(rows, row_count, width, label);
+	return rows;
 }
 
 int mc_2sap_reverse_direction(int direction, const char *caller_name)
