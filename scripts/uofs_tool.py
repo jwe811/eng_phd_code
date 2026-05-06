@@ -98,7 +98,7 @@ def cmd_unique(args):
 
 
 def cmd_contacts(args):
-    contacts = aggregate_contacts(load(args), args.radius)
+    contacts = aggregate_contacts(load(args), args.radius, jobs=args.jobs)
     if args.output:
         with Path(args.output).open("w", newline="", encoding="utf-8") as fp:
             writer = csv.writer(fp)
@@ -171,6 +171,7 @@ def main():
     add_common(p)
     p.add_argument("-r", "--radius", type=float, default=1.0)
     p.add_argument("-o", "--output")
+    p.add_argument("-j", "--jobs", type=int, default=1, help="Worker processes for per-object contact counts")
     p.set_defaults(func=cmd_contacts)
 
     args = parser.parse_args()

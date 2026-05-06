@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
+import itertools
+import os
 import re
 import subprocess
 import sys
@@ -54,6 +57,35 @@ class CreatorAllBenchmark:
     expected_count: int
     output_path: str
     output_sha256: str
+
+
+@dataclass(frozen=True)
+class TransferMatrixResult:
+    bench: TransferMatrixBenchmark
+    got: float
+    status: str
+    failed: bool
+
+
+@dataclass(frozen=True)
+class MonteCarloResult:
+    bench: MonteCarloBenchmark
+    eigen: float
+    reject_first: int
+    reject_last: int
+    sha_status: str
+    status: str
+    failed: bool
+
+
+@dataclass(frozen=True)
+class CreatorAllResult:
+    bench: CreatorAllBenchmark
+    count: int
+    sha_status: str
+    validate_status: str
+    status: str
+    failed: bool
 
 
 TM_BENCHMARKS = (
@@ -251,10 +283,17 @@ CREATOR_BENCHMARKS = (
 )
 
 
-def run_command(args: list[str], quiet: bool) -> str:
+def run_command(args: list[str], quiet: bool, command_threads: int | None = None) -> str:
+    env = None
+    if command_threads is not None:
+        env = os.environ.copy()
+        env["OMP_NUM_THREADS"] = str(command_threads)
+        env.setdefault("OMP_DYNAMIC", "FALSE")
+
     proc = subprocess.run(
         args,
         cwd=ROOT,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -268,6 +307,24 @@ def run_command(args: list[str], quiet: bool) -> str:
     if not quiet:
         print(output, end="")
     return output
+
+
+def default_jobs(limit: int | None = None) -> int:
+    cpus = os.cpu_count() or 1
+    jobs = min(4, cpus)
+    if limit is not None:
+        jobs = min(jobs, limit)
+    return max(1, jobs)
+
+
+def iter_ordered(items, jobs: int, func, *extra_args):
+    if jobs <= 1:
+        for item in items:
+            yield func(item, *extra_args)
+        return
+    with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as executor:
+        repeated_args = [itertools.repeat(arg) for arg in extra_args]
+        yield from executor.map(func, items, *repeated_args)
 
 
 def clean_output(output: str) -> str:
@@ -305,173 +362,177 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def audit_transfer_matrix(benchmarks: tuple[TransferMatrixBenchmark, ...], quiet: bool) -> int:
+def audit_transfer_matrix_case(bench: TransferMatrixBenchmark, command_threads: int | None) -> TransferMatrixResult:
+    cmd = ["bin/tm_master", "-L", str(bench.L), "-M", str(bench.M), "-m", str(bench.mode)]
+    try:
+        output = clean_output(run_command(cmd, quiet=True, command_threads=command_threads))
+        got = parse_float(r"Connective Constant(?:\s*\([^)]*\))?:\s+([0-9.eE+-]+)", output, "connective constant")
+        assert_close(
+            f"TM {bench.name} L={bench.L} M={bench.M}",
+            got,
+            bench.connective_constant,
+            bench.tolerance,
+        )
+        return TransferMatrixResult(bench, got, "PASS", False)
+    except Exception as exc:
+        return TransferMatrixResult(bench, float("nan"), f"FAIL: {exc}", True)
+
+
+def audit_transfer_matrix(benchmarks: tuple[TransferMatrixBenchmark, ...], jobs: int, command_threads: int | None) -> int:
     failures = 0
     print("\nTransfer-Matrix Parity")
     print("mode        lattice   got           expected      status")
     print("----------  --------  ------------  ------------  ------")
 
-    for bench in benchmarks:
-        cmd = ["bin/tm_master", "-L", str(bench.L), "-M", str(bench.M), "-m", str(bench.mode)]
-        try:
-            output = clean_output(run_command(cmd, quiet=True))
-            got = parse_float(r"Connective Constant(?:\s*\([^)]*\))?:\s+([0-9.eE+-]+)", output, "connective constant")
-            assert_close(
-                f"TM {bench.name} L={bench.L} M={bench.M}",
-                got,
-                bench.connective_constant,
-                bench.tolerance,
-            )
-            status = "PASS"
-        except Exception as exc:
-            got = float("nan")
-            status = f"FAIL: {exc}"
+    for result in iter_ordered(benchmarks, jobs, audit_transfer_matrix_case, command_threads):
+        bench = result.bench
+        if result.failed:
             failures += 1
 
         print(
             f"{bench.name:<10}  {bench.L}x{bench.M:<5}  "
-            f"{got:12.6f}  {bench.connective_constant:12.6f}  {status}"
+            f"{result.got:12.6f}  {bench.connective_constant:12.6f}  {result.status}"
         )
 
     return failures
 
 
-def audit_monte_carlo(benchmarks: tuple[MonteCarloBenchmark, ...], quiet: bool) -> int:
+def audit_monte_carlo_case(bench: MonteCarloBenchmark, command_threads: int | None) -> MonteCarloResult:
+    cmd = [
+        "bin/mc_master",
+        "-L",
+        str(bench.L),
+        "-M",
+        str(bench.M),
+        "-s",
+        str(bench.span),
+        "-n",
+        str(bench.samples),
+        "-m",
+        str(bench.mode),
+        "-r",
+        str(bench.run),
+        "-S",
+        str(bench.seed),
+    ]
+    try:
+        output = clean_output(run_command(cmd, quiet=True, command_threads=command_threads))
+        eigen = parse_float(
+            r"Calculated (?:2SAP )?dominant eigenvalue:\s+([0-9.eE+-]+)",
+            output,
+            "dominant eigenvalue",
+        )
+        reject_first = parse_int(r"Rejected at first step\s+(\d+)\s+times", output, "first rejection count")
+        reject_last = parse_int(r"Rejected at last step\s+(\d+)\s+times", output, "last rejection count")
+        printed_path_match = re.search(r"printed UofS in file '([^']+)'", output)
+        if not printed_path_match:
+            raise RuntimeError("could not parse UofS output path")
+
+        output_path = Path(printed_path_match.group(1))
+        expected_path = Path(bench.output_path)
+        if output_path != expected_path:
+            raise AssertionError(f"output path {output_path} != expected {expected_path}")
+        full_output_path = ROOT / output_path
+        if not full_output_path.is_file():
+            raise AssertionError(f"missing generated UofS file {output_path}")
+
+        digest = sha256_file(full_output_path)
+        assert_close(f"MC {bench.name} eigenvalue", eigen, bench.expected_eigenvalue, bench.eigen_tolerance)
+        if reject_first != bench.reject_first or reject_last != bench.reject_last:
+            raise AssertionError(
+                f"rejects got {reject_first}/{reject_last}, "
+                f"expected {bench.reject_first}/{bench.reject_last}"
+            )
+        if digest != bench.output_sha256:
+            raise AssertionError(f"sha256 got {digest}, expected {bench.output_sha256}")
+        return MonteCarloResult(bench, eigen, reject_first, reject_last, "match", "PASS", False)
+    except Exception as exc:
+        return MonteCarloResult(bench, float("nan"), -1, -1, "mismatch", f"FAIL: {exc}", True)
+
+
+def audit_monte_carlo(benchmarks: tuple[MonteCarloBenchmark, ...], jobs: int, command_threads: int | None) -> int:
     failures = 0
     print("\nMonte Carlo Sampler Parity")
     print("mode        lattice/span  eigenvalue         rejects   sha      status")
     print("----------  ------------  -----------------  --------  -------  ------")
 
-    for bench in benchmarks:
-        cmd = [
-            "bin/mc_master",
-            "-L",
-            str(bench.L),
-            "-M",
-            str(bench.M),
-            "-s",
-            str(bench.span),
-            "-n",
-            str(bench.samples),
-            "-m",
-            str(bench.mode),
-            "-r",
-            str(bench.run),
-            "-S",
-            str(bench.seed),
-        ]
-        try:
-            output = clean_output(run_command(cmd, quiet=True))
-            eigen = parse_float(
-                r"Calculated (?:2SAP )?dominant eigenvalue:\s+([0-9.eE+-]+)",
-                output,
-                "dominant eigenvalue",
-            )
-            reject_first = parse_int(r"Rejected at first step\s+(\d+)\s+times", output, "first rejection count")
-            reject_last = parse_int(r"Rejected at last step\s+(\d+)\s+times", output, "last rejection count")
-            printed_path_match = re.search(r"printed UofS in file '([^']+)'", output)
-            if not printed_path_match:
-                raise RuntimeError("could not parse UofS output path")
-
-            output_path = Path(printed_path_match.group(1))
-            expected_path = Path(bench.output_path)
-            if output_path != expected_path:
-                raise AssertionError(f"output path {output_path} != expected {expected_path}")
-            full_output_path = ROOT / output_path
-            if not full_output_path.is_file():
-                raise AssertionError(f"missing generated UofS file {output_path}")
-
-            digest = sha256_file(full_output_path)
-            assert_close(f"MC {bench.name} eigenvalue", eigen, bench.expected_eigenvalue, bench.eigen_tolerance)
-            if reject_first != bench.reject_first or reject_last != bench.reject_last:
-                raise AssertionError(
-                    f"rejects got {reject_first}/{reject_last}, "
-                    f"expected {bench.reject_first}/{bench.reject_last}"
-                )
-            if digest != bench.output_sha256:
-                raise AssertionError(f"sha256 got {digest}, expected {bench.output_sha256}")
-            status = "PASS"
-            sha_status = "match"
-        except Exception as exc:
-            eigen = float("nan")
-            reject_first = -1
-            reject_last = -1
-            sha_status = "mismatch"
-            status = f"FAIL: {exc}"
+    for result in iter_ordered(benchmarks, jobs, audit_monte_carlo_case, command_threads):
+        bench = result.bench
+        if result.failed:
             failures += 1
 
         print(
             f"{bench.name:<10}  {bench.L}x{bench.M}/s{bench.span:<4} "
-            f"{eigen:17.15g}  {reject_first:2d}/{reject_last:<5d}  {sha_status:<7}  {status}"
+            f"{result.eigen:17.15g}  {result.reject_first:2d}/{result.reject_last:<5d}  {result.sha_status:<7}  {result.status}"
         )
 
     return failures
 
 
-def audit_creator_all(benchmarks: tuple[CreatorAllBenchmark, ...], quiet: bool) -> int:
+def audit_creator_all_case(bench: CreatorAllBenchmark, command_threads: int | None) -> CreatorAllResult:
+    cmd = [
+        "bin/creator_all",
+        "-L",
+        str(bench.L),
+        "-M",
+        str(bench.M),
+        "-s",
+        str(bench.span),
+        "-m",
+        str(bench.mode),
+    ]
+    try:
+        output = clean_output(run_command(cmd, quiet=True, command_threads=command_threads))
+        count = parse_int(r"Generated\s+(\d+)\s+", output, "CreatorAll count")
+        if count != bench.expected_count:
+            raise AssertionError(f"count got {count}, expected {bench.expected_count}")
+
+        output_path = ROOT / bench.output_path
+        if not output_path.is_file():
+            raise AssertionError(f"missing generated UofS file {bench.output_path}")
+
+        digest = sha256_file(output_path)
+        if digest != bench.output_sha256:
+            raise AssertionError(f"sha256 got {digest}, expected {bench.output_sha256}")
+
+        validation_output = run_command(
+            [
+                "python3",
+                "scripts/uofs_tool.py",
+                "validate",
+                bench.output_path,
+                "-L",
+                str(bench.L),
+                "-M",
+                str(bench.M),
+                "-s",
+                str(bench.span),
+            ],
+            quiet=True,
+        )
+        failed = parse_int(r"failed_objects:\s+(\d+)", validation_output, "CreatorAll validation failures")
+        if failed != 0:
+            raise AssertionError(f"UofS validation reported {failed} failed objects")
+
+        return CreatorAllResult(bench, count, "match", "ok", "PASS", False)
+    except Exception as exc:
+        return CreatorAllResult(bench, -1, "mismatch", "fail", f"FAIL: {exc}", True)
+
+
+def audit_creator_all(benchmarks: tuple[CreatorAllBenchmark, ...], jobs: int, command_threads: int | None) -> int:
     failures = 0
     print("\nCreatorAll Parity")
     print("mode        lattice/span  count     sha      validate  status")
     print("----------  ------------  --------  -------  --------  ------")
 
-    for bench in benchmarks:
-        cmd = [
-            "bin/creator_all",
-            "-L",
-            str(bench.L),
-            "-M",
-            str(bench.M),
-            "-s",
-            str(bench.span),
-            "-m",
-            str(bench.mode),
-        ]
-        try:
-            output = clean_output(run_command(cmd, quiet=True))
-            count = parse_int(r"Generated\s+(\d+)\s+", output, "CreatorAll count")
-            if count != bench.expected_count:
-                raise AssertionError(f"count got {count}, expected {bench.expected_count}")
-
-            output_path = ROOT / bench.output_path
-            if not output_path.is_file():
-                raise AssertionError(f"missing generated UofS file {bench.output_path}")
-
-            digest = sha256_file(output_path)
-            if digest != bench.output_sha256:
-                raise AssertionError(f"sha256 got {digest}, expected {bench.output_sha256}")
-
-            validation_output = run_command(
-                [
-                    "python3",
-                    "scripts/uofs_tool.py",
-                    "validate",
-                    bench.output_path,
-                    "-L",
-                    str(bench.L),
-                    "-M",
-                    str(bench.M),
-                    "-s",
-                    str(bench.span),
-                ],
-                quiet=True,
-            )
-            failed = parse_int(r"failed_objects:\s+(\d+)", validation_output, "CreatorAll validation failures")
-            if failed != 0:
-                raise AssertionError(f"UofS validation reported {failed} failed objects")
-
-            status = "PASS"
-            sha_status = "match"
-            validate_status = "ok"
-        except Exception as exc:
-            count = -1
-            sha_status = "mismatch"
-            validate_status = "fail"
-            status = f"FAIL: {exc}"
+    for result in iter_ordered(benchmarks, jobs, audit_creator_all_case, command_threads):
+        bench = result.bench
+        if result.failed:
             failures += 1
 
         print(
             f"{bench.name:<10}  {bench.L}x{bench.M}/s{bench.span:<4} "
-            f"{count:8d}  {sha_status:<7}  {validate_status:<8}  {status}"
+            f"{result.count:8d}  {result.sha_status:<7}  {result.validate_status:<8}  {result.status}"
         )
 
     return failures
@@ -485,6 +546,12 @@ def main() -> int:
     parser.add_argument("--creator-only", action="store_true", help="Run only CreatorAll benchmarks.")
     parser.add_argument("--slow", action="store_true", help="Include slower deterministic multi-sample MC benchmarks.")
     parser.add_argument("--quiet", action="store_true", help="Suppress command output unless a test fails.")
+    parser.add_argument("-j", "--jobs", type=int, default=default_jobs(), help="Benchmark subprocesses to run concurrently. Default: up to 4.")
+    parser.add_argument(
+        "--command-threads",
+        type=int,
+        help="OMP_NUM_THREADS for each audited binary. Default: 1 when --jobs > 1, otherwise inherit the environment.",
+    )
     args = parser.parse_args()
 
     only_flags = [args.tm_only, args.mc_only, args.creator_only]
@@ -494,19 +561,28 @@ def main() -> int:
     if not args.no_build:
         run_command(["make", "all"], quiet=args.quiet)
 
+    if args.jobs < 1:
+        parser.error("--jobs must be at least 1")
+    if args.command_threads is not None and args.command_threads < 1:
+        parser.error("--command-threads must be at least 1")
+
+    command_threads = args.command_threads
+    if command_threads is None and args.jobs > 1:
+        command_threads = 1
+
     failures = 0
     mc_benchmarks = MC_BENCHMARKS + (SLOW_MC_BENCHMARKS if args.slow else ())
 
     if args.creator_only:
-        failures += audit_creator_all(CREATOR_BENCHMARKS, quiet=args.quiet)
+        failures += audit_creator_all(CREATOR_BENCHMARKS, jobs=args.jobs, command_threads=command_threads)
     elif args.tm_only:
-        failures += audit_transfer_matrix(TM_BENCHMARKS, quiet=args.quiet)
+        failures += audit_transfer_matrix(TM_BENCHMARKS, jobs=args.jobs, command_threads=command_threads)
     elif args.mc_only:
-        failures += audit_monte_carlo(mc_benchmarks, quiet=args.quiet)
+        failures += audit_monte_carlo(mc_benchmarks, jobs=args.jobs, command_threads=command_threads)
     else:
-        failures += audit_transfer_matrix(TM_BENCHMARKS, quiet=args.quiet)
-        failures += audit_monte_carlo(mc_benchmarks, quiet=args.quiet)
-        failures += audit_creator_all(CREATOR_BENCHMARKS, quiet=args.quiet)
+        failures += audit_transfer_matrix(TM_BENCHMARKS, jobs=args.jobs, command_threads=command_threads)
+        failures += audit_monte_carlo(mc_benchmarks, jobs=args.jobs, command_threads=command_threads)
+        failures += audit_creator_all(CREATOR_BENCHMARKS, jobs=args.jobs, command_threads=command_threads)
 
     if failures:
         print(f"\nParity audit failed: {failures} benchmark(s) failed.", file=sys.stderr)

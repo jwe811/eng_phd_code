@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import itertools
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -27,13 +30,24 @@ CASES = (
 )
 
 
-def run_case(case: BenchmarkCase, repeats: int) -> tuple[float, float]:
+def _command_env(command_threads: int | None):
+    if command_threads is None:
+        return None
+    env = os.environ.copy()
+    env["OMP_NUM_THREADS"] = str(command_threads)
+    env.setdefault("OMP_DYNAMIC", "FALSE")
+    return env
+
+
+def run_case(case: BenchmarkCase, repeats: int, command_threads: int | None = None) -> tuple[float, float]:
     times: list[float] = []
+    env = _command_env(command_threads)
     for _ in range(repeats):
         start = time.perf_counter()
         proc = subprocess.run(
             case.args,
             cwd=ROOT,
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
             check=False,
@@ -45,19 +59,49 @@ def run_case(case: BenchmarkCase, repeats: int) -> tuple[float, float]:
     return min(times), sum(times) / len(times)
 
 
+def default_jobs(limit: int) -> int:
+    return max(1, min(limit, 4, os.cpu_count() or 1))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run small engine runtime benchmarks.")
     parser.add_argument("-r", "--repeats", type=int, default=3, help="Number of repeats per case. Default: 3.")
+    parser.add_argument("-j", "--jobs", type=int, default=default_jobs(len(CASES)), help="Benchmark cases to run concurrently. Default: up to 4.")
+    parser.add_argument(
+        "--command-threads",
+        type=int,
+        help="OMP_NUM_THREADS for each benchmark binary. Default: 1 when --jobs > 1, otherwise inherit the environment.",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1:
         parser.error("--repeats must be at least 1")
+    if args.jobs < 1:
+        parser.error("--jobs must be at least 1")
+    if args.command_threads is not None and args.command_threads < 1:
+        parser.error("--command-threads must be at least 1")
+
+    command_threads = args.command_threads
+    if command_threads is None and args.jobs > 1:
+        command_threads = 1
 
     print("Benchmarks")
     print("case                    best_s    avg_s")
     print("----------------------  --------  --------")
-    for case in CASES:
-        best, average = run_case(case, args.repeats)
+    if args.jobs == 1:
+        results = [run_case(case, args.repeats, command_threads) for case in CASES]
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.jobs) as executor:
+            results = list(
+                executor.map(
+                    run_case,
+                    CASES,
+                    itertools.repeat(args.repeats),
+                    itertools.repeat(command_threads),
+                )
+            )
+
+    for case, (best, average) in zip(CASES, results):
         print(f"{case.name:<22}  {best:8.4f}  {average:8.4f}")
 
     return 0

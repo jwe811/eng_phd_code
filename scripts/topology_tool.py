@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import itertools
 import sys
 from collections import Counter
 from pathlib import Path
@@ -13,6 +15,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from postprocess.bfacf import shrink_label, shrink_length
 from postprocess.topology import linking_number
 from postprocess.uofs import read_objects
+
+
+def _linking_number_line(args):
+    idx, obj, keep_going = args
+    try:
+        value = linking_number(obj.polygons[0], obj.polygons[1])
+        return f"{idx} {value:g}"
+    except ValueError as exc:
+        if keep_going:
+            return f"{idx} unresolved {exc}"
+        raise
 
 
 def cmd_shrink_id(args):
@@ -50,15 +63,17 @@ def cmd_tally(args):
 
 def cmd_linking_number(args):
     objects = read_objects(args.input, 2)
-    for idx, obj in enumerate(objects, start=1):
-        try:
-            value = linking_number(obj.polygons[0], obj.polygons[1])
-            print(f"{idx} {value:g}")
-        except ValueError as exc:
-            if args.keep_going:
-                print(f"{idx} unresolved {exc}")
-            else:
-                raise
+    if args.jobs < 1:
+        raise SystemExit("--jobs must be at least 1")
+    jobs = min(args.jobs, max(1, len(objects)))
+    work = zip(range(1, len(objects) + 1), objects, itertools.repeat(args.keep_going))
+    if jobs == 1 or len(objects) <= 1:
+        lines = [_linking_number_line(item) for item in work]
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as executor:
+            lines = list(executor.map(_linking_number_line, work))
+    for line in lines:
+        print(line)
 
 
 def cmd_split_by_label(args):
@@ -106,6 +121,7 @@ def main():
     p = sub.add_parser("linking-number", help="Compute projection-based linking numbers for 2SAP UofS objects")
     p.add_argument("input")
     p.add_argument("--keep-going", action="store_true")
+    p.add_argument("-j", "--jobs", type=int, default=1, help="Worker processes for per-object linking numbers")
     p.set_defaults(func=cmd_linking_number)
 
     p = sub.add_parser("split-by-label", help="Split a UofS file into one file per label")

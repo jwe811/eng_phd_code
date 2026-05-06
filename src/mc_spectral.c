@@ -34,11 +34,15 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 	unsigned long int insection;
 	unsigned long int nth;
 	unsigned long int row = 0;
-	unsigned long int pos = 0;
+	unsigned long int pos;
+	unsigned long int *row_insection;
+	unsigned long int *row_nth;
 
 	memset(&csr, 0, sizeof(csr));
 	csr.rows = input->max_tspans;
 	csr.row_ptr = mc_xcalloc(csr.rows + 2, sizeof(*csr.row_ptr), "2SAP spectral CSR row pointers");
+	row_insection = mc_xcalloc(csr.rows + 1, sizeof(*row_insection), "2SAP spectral CSR row sections");
+	row_nth = mc_xcalloc(csr.rows + 1, sizeof(*row_nth), "2SAP spectral CSR row transition indexes");
 
 	/* Assign rows in the same nested section/nth order used by t_nrr. This is
 	   what keeps eigenvector entries aligned with sampler transition numbers. */
@@ -50,6 +54,8 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 				fprintf(stderr, "Fatal: 2SAP spectral row count exceeded max_tspans\n");
 				exit(EXIT_FAILURE);
 			}
+			row_insection[row] = insection;
+			row_nth[row] = nth;
 			csr.row_ptr[row + 1] = csr.row_ptr[row] + input->num_outsections[outsection];
 			if (input->tspans_edges[insection][nth] > csr.max_edge) {
 				csr.max_edge = input->tspans_edges[insection][nth];
@@ -70,19 +76,21 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 
 	/* Fill the row CSR and count transpose entries. The transition weight is
 	   determined by the edge count of the source two-span. */
-	row = 0;
-	for (insection = 1; insection <= input->max_keynum; insection++) {
-		for (nth = 1; nth <= input->num_outsections[insection]; nth++) {
-			unsigned long int outsection = input->tspans_outsection[insection][nth];
-			unsigned long int right_tspan;
-			unsigned long int edge_count = input->tspans_edges[insection][nth];
-			row++;
-			for (right_tspan = 1; right_tspan <= input->num_outsections[outsection]; right_tspan++) {
-				pos++;
-				csr.cols[pos] = input->tspans_nrr[outsection][right_tspan];
-				csr.edges[pos] = edge_count;
-				csr.transpose_row_ptr[csr.cols[pos] + 1]++;
-			}
+	#pragma omp parallel for private(pos) schedule(static)
+	for (row = 1; row <= csr.rows; row++) {
+		unsigned long int source_section = row_insection[row];
+		unsigned long int source_nth = row_nth[row];
+		unsigned long int outsection = input->tspans_outsection[source_section][source_nth];
+		unsigned long int edge_count = input->tspans_edges[source_section][source_nth];
+		unsigned long int right_tspan;
+		unsigned long int start = csr.row_ptr[row] + 1;
+
+		for (right_tspan = 1; right_tspan <= input->num_outsections[outsection]; right_tspan++) {
+			pos = start + right_tspan - 1;
+			csr.cols[pos] = input->tspans_nrr[outsection][right_tspan];
+			csr.edges[pos] = edge_count;
+			#pragma omp atomic update
+			csr.transpose_row_ptr[csr.cols[pos] + 1]++;
 		}
 	}
 
@@ -90,21 +98,29 @@ static McSpectralCsr build_transition_csr(const McTransitionSpectralInput *input
 		csr.transpose_row_ptr[row + 1] += csr.transpose_row_ptr[row];
 	}
 	{
-		unsigned long int *write_cursor = mc_xmalloc((csr.rows + 2) * sizeof(*write_cursor), "2SAP spectral transpose CSR write cursors");
-		memcpy(write_cursor, csr.transpose_row_ptr, (csr.rows + 2) * sizeof(*write_cursor));
-		for (row = 1; row <= csr.rows; row++) {
-			unsigned long int start = csr.row_ptr[row] + 1;
-			unsigned long int end = csr.row_ptr[row + 1];
-			for (pos = start; pos <= end; pos++) {
-				unsigned long int col = csr.cols[pos];
-				unsigned long int out_pos = ++write_cursor[col];
-				csr.transpose_rows[out_pos] = row;
-				csr.transpose_edges[out_pos] = csr.edges[pos];
+			unsigned long int *write_cursor = mc_xmalloc((csr.rows + 2) * sizeof(*write_cursor), "2SAP spectral transpose CSR write cursors");
+			memcpy(write_cursor, csr.transpose_row_ptr, (csr.rows + 2) * sizeof(*write_cursor));
+			#pragma omp parallel for private(pos) schedule(static)
+			for (row = 1; row <= csr.rows; row++) {
+				unsigned long int start = csr.row_ptr[row] + 1;
+				unsigned long int end = csr.row_ptr[row + 1];
+				for (pos = start; pos <= end; pos++) {
+					unsigned long int col = csr.cols[pos];
+					unsigned long int out_pos;
+					#pragma omp atomic capture
+					{
+						write_cursor[col]++;
+						out_pos = write_cursor[col];
+					}
+					csr.transpose_rows[out_pos] = row;
+					csr.transpose_edges[out_pos] = csr.edges[pos];
+				}
 			}
-		}
-		free(write_cursor);
+			free(write_cursor);
 	}
 
+	free(row_insection);
+	free(row_nth);
 	return csr;
 }
 

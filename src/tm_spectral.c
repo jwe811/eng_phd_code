@@ -52,13 +52,14 @@ void tm_spectral_prepare_transpose(TmSpectralProblem *problem)
 	unsigned long int row;
 	unsigned long int pos;
 	unsigned long int total_transitions = problem->row_ptr[problem->states + 1];
+	unsigned long int max_edge = 0;
 	unsigned long int *write_cursor;
 
-	problem->max_edge = 0;
 	problem->transpose_row_ptr = spectral_xcalloc(problem->states + 2, sizeof(*problem->transpose_row_ptr), "transpose CSR row pointer");
 	problem->transpose_rows = spectral_xcalloc(total_transitions + 1, sizeof(*problem->transpose_rows), "transpose CSR source rows");
 	problem->transpose_edges = spectral_xcalloc(total_transitions + 1, sizeof(*problem->transpose_edges), "transpose CSR edge weights");
 
+	#pragma omp parallel for private(pos) reduction(max:max_edge) schedule(static)
 	for (row = 1; row <= problem->states; row++) {
 		unsigned long int start = problem->row_ptr[row] + 1;
 		unsigned long int end = problem->row_ptr[row + 1];
@@ -67,26 +68,40 @@ void tm_spectral_prepare_transpose(TmSpectralProblem *problem)
 			if (col < 1 || col > problem->states) {
 				spectral_fatal("CSR transition points outside state range");
 			}
+			#pragma omp atomic update
 			problem->transpose_row_ptr[col + 1]++;
-			if (problem->edges[pos] > problem->max_edge) {
-				problem->max_edge = problem->edges[pos];
+			if (problem->edges[pos] > max_edge) {
+				max_edge = problem->edges[pos];
 			}
 		}
 	}
+	problem->max_edge = max_edge;
 
 	for (row = 1; row <= problem->states; row++) {
 		problem->transpose_row_ptr[row + 1] += problem->transpose_row_ptr[row];
+	}
+	if (problem->transpose_row_ptr[problem->states + 1] != total_transitions) {
+		spectral_fatal("transpose CSR count mismatch");
 	}
 
 	write_cursor = spectral_xmalloc((problem->states + 2) * sizeof(*write_cursor), "transpose CSR write cursors");
 	memcpy(write_cursor, problem->transpose_row_ptr, (problem->states + 2) * sizeof(*write_cursor));
 
+	#pragma omp parallel for private(pos) schedule(static)
 	for (row = 1; row <= problem->states; row++) {
 		unsigned long int start = problem->row_ptr[row] + 1;
 		unsigned long int end = problem->row_ptr[row + 1];
 		for (pos = start; pos <= end; pos++) {
 			unsigned long int col = problem->out_states[pos];
-			unsigned long int out_pos = ++write_cursor[col];
+			unsigned long int out_pos;
+			#pragma omp atomic capture
+			{
+				write_cursor[col]++;
+				out_pos = write_cursor[col];
+			}
+			if (out_pos > total_transitions) {
+				spectral_fatal("transpose CSR write cursor overflow");
+			}
 			problem->transpose_rows[out_pos] = row;
 			problem->transpose_edges[out_pos] = problem->edges[pos];
 		}

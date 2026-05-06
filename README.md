@@ -183,9 +183,21 @@ Every generated TM result also gets a small `.meta` sidecar with the command,
 mode, lattice, git commit, timestamp, and OpenMP thread count. These metadata
 files are for reproducibility only; they do not change the numeric result files.
 
+Parallel controls:
+
+- `OMP_NUM_THREADS=<n>` controls OpenMP spectral kernels and CSR preparation.
+- `TM_STATE_THREADS=<n>` enables parallel transfer-matrix start-vertex discovery.
+  It defaults to serial discovery to preserve the historical traversal order.
+- `scripts/parity_audit.py` and `scripts/benchmark.py` accept `--jobs` for
+  process-level parallelism and `--command-threads` to cap each child binary.
+
 ### 2. Monte Carlo Sampling
 
 Use `mc_master` when you want random samples at a target span.
+
+For SAP/HamSAP modes, set `MC_SAMPLE_THREADS=<n>` to generate accepted samples
+with independent per-sample RNG streams and thread-local walk buffers. The
+default is `1` so deterministic parity fixtures keep their legacy RNG sequence.
 
 Examples:
 

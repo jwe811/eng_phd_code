@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <omp.h>
 #include <getopt.h>
@@ -130,6 +131,10 @@ unsigned short int **colhingeedges = NULL;
 unsigned short int **rowhingeedges = NULL;
 unsigned long int dupcounter = 0;
 
+#ifdef _OPENMP
+#pragma omp threadprivate(ordertemplate_master, reordertemplate_master, hingestatus, alreadyentered, colhingeedges, rowhingeedges, section_template_scratch)
+#endif
+
 vec_ent *L_Evector[2], *R_Evector[2];
 double connectivity_inv;
 unsigned long int actual_max_states = 0;
@@ -211,6 +216,18 @@ struct hinge_span* newhinge(void) {
     return (struct hinge_span *)xcalloc(1, sizeof(struct hinge_span), "hinge span");
 }
 
+static void increment_valid_2_spans(void)
+{
+    #pragma omp atomic update
+    valid_2_spans++;
+}
+
+static void increment_num_2_spans(void)
+{
+    #pragma omp atomic update
+    num_2_spans++;
+}
+
 void fillreordertemplate(int poly, int ledges, int redges) {
     int i, j, ii, jj, s;
     unsigned int firstentry, secondentry, connectingedge;
@@ -247,6 +264,8 @@ void fillreordertemplate(int poly, int ledges, int redges) {
    already found. The linked-list form is convenient while recursively
    discovering states; conv_to_array() later compacts it to CSR. */
 void recordtemplate(int (*pON)[]) {
+#pragma omp critical(tm_recordtemplate)
+{
     unsigned long int inNum = get_or_add_current_section(0, 0);
     unsigned long int outNum = get_or_add_current_section(0, 1);
     int i, j;
@@ -313,6 +332,7 @@ void recordtemplate(int (*pON)[]) {
         for(i=0; i<MAX_HEDGE; i++) (*current_hinge_span[inNum]).hedges[i]=temp_hedges[i];
     }
 }
+}
 
 /* 2SAP discovery nests polygon B inside each partial polygon A discovery. Both
    polygons share hingestatus/edge occupancy, but use independent templates. */
@@ -349,13 +369,13 @@ void leavehinge(int i, int j, int side, int poly, int (*pON)[]) {
                 if (ham_check) {
                     int isHam=1;
                     for (int ii=0; ii<=lat_M; ii++) for (int jj=0; jj<=lat_L; jj++) if (!hingestatus[ii][jj]) { isHam=0; break; }
-                    if(isHam) { fillreordertemplate(0, pON_raw[0]-1, pON_raw[1]-1); if(num_polys==2) fillreordertemplate(1, pON_raw[3]-1, pON_raw[4]-1); recordtemplate(pON); valid_2_spans++; }
+                    if(isHam) { fillreordertemplate(0, pON_raw[0]-1, pON_raw[1]-1); if(num_polys==2) fillreordertemplate(1, pON_raw[3]-1, pON_raw[4]-1); recordtemplate(pON); increment_valid_2_spans(); }
                 } else {
-                    fillreordertemplate(0, pON_raw[0]-1, pON_raw[1]-1); if(num_polys==2) fillreordertemplate(1, pON_raw[3]-1, pON_raw[4]-1); recordtemplate(pON); valid_2_spans++;
+                    fillreordertemplate(0, pON_raw[0]-1, pON_raw[1]-1); if(num_polys==2) fillreordertemplate(1, pON_raw[3]-1, pON_raw[4]-1); recordtemplate(pON); increment_valid_2_spans();
                 }
             }
         }
-        num_2_spans++;
+        increment_num_2_spans();
     }
     for (int ii=0; ii<=lat_M; ii++) for (int jj=0; jj<=lat_L; jj++) if (!hingestatus[ii][jj]) enterhinge(ii, jj, side, poly, pON);
     pON_raw[poly*3 + side]--; ordertemplate_master[poly][side][i][j] = 0;
@@ -406,25 +426,234 @@ void allocate_resources(void) {
         for(s=0; s<2; s++) {
             ordertemplate_master[p][s] = (unsigned int **)xcalloc(vM, sizeof(unsigned int *), "order template rows");
             reordertemplate_master[p][s] = (unsigned int **)xcalloc(vM, sizeof(unsigned int *), "reorder template rows");
-            for(i=0; i<vM; i++) {
-                ordertemplate_master[p][s][i] = (unsigned int *)xcalloc(vL, sizeof(unsigned int), "order template row");
-                reordertemplate_master[p][s][i] = (unsigned int *)xcalloc(vL, sizeof(unsigned int), "reorder template row");
+	            for(i=0; i<vM; i++) {
+	                ordertemplate_master[p][s][i] = (unsigned int *)xcalloc(vL, sizeof(unsigned int), "order template row");
+	                reordertemplate_master[p][s][i] = (unsigned int *)xcalloc(vL, sizeof(unsigned int), "reorder template row");
+	            }
+	        }
+	    }
+	    hingestatus = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "hinge status rows");
+	    colhingeedges = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "column hinge edge rows");
+	    rowhingeedges = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "row hinge edge rows");
+	    for(i=0; i<vM; i++) {
+	        hingestatus[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "hinge status row");
+	        colhingeedges[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "column hinge edge row");
+	        rowhingeedges[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "row hinge edge row");
+	    }
+	    alreadyentered = (unsigned short int ***)xcalloc(num_polys, sizeof(unsigned short int **), "already-entered tables");
+	    for(p=0; p<num_polys; p++) {
+	        alreadyentered[p] = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "already-entered rows");
+	        for(i=0; i<vM; i++) alreadyentered[p][i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "already-entered row");
+	    }
+	}
+
+static unsigned int ****alloc_template_workspace(const char *label)
+{
+    unsigned int ****workspace = (unsigned int ****)xcalloc(num_polys, sizeof(unsigned int ***), label);
+    for (int p = 0; p < num_polys; p++) {
+        workspace[p] = (unsigned int ***)xcalloc(2, sizeof(unsigned int **), label);
+        for (int s = 0; s < 2; s++) {
+            workspace[p][s] = (unsigned int **)xcalloc(vM, sizeof(unsigned int *), label);
+            for (int i = 0; i < vM; i++) {
+                workspace[p][s][i] = (unsigned int *)xcalloc(vL, sizeof(unsigned int), label);
             }
         }
     }
-    hingestatus = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "hinge status rows");
-    colhingeedges = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "column hinge edge rows");
-    rowhingeedges = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "row hinge edge rows");
-    for(i=0; i<vM; i++) {
-        hingestatus[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "hinge status row");
-        colhingeedges[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "column hinge edge row");
-        rowhingeedges[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "row hinge edge row");
+    return workspace;
+}
+
+static unsigned short int **alloc_ushort_grid(const char *label)
+{
+    unsigned short int **grid = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), label);
+    for (int i = 0; i < vM; i++) {
+        grid[i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), label);
     }
-    alreadyentered = (unsigned short int ***)xcalloc(num_polys, sizeof(unsigned short int **), "already-entered tables");
-    for(p=0; p<num_polys; p++) {
-        alreadyentered[p] = (unsigned short int **)xcalloc(vM, sizeof(unsigned short int *), "already-entered rows");
-        for(i=0; i<vM; i++) alreadyentered[p][i] = (unsigned short int *)xcalloc(vL, sizeof(unsigned short int), "already-entered row");
+    return grid;
+}
+
+static unsigned short int ***alloc_alreadyentered_workspace(void)
+{
+    unsigned short int ***workspace = (unsigned short int ***)xcalloc(num_polys, sizeof(unsigned short int **), "thread already-entered workspace");
+    for (int p = 0; p < num_polys; p++) {
+        workspace[p] = alloc_ushort_grid("thread already-entered grid");
     }
+    return workspace;
+}
+
+static void free_template_workspace(unsigned int ****workspace)
+{
+    if (!workspace) return;
+    for (int p = 0; p < num_polys; p++) {
+        if (!workspace[p]) continue;
+        for (int s = 0; s < 2; s++) {
+            if (!workspace[p][s]) continue;
+            for (int i = 0; i < vM; i++) free(workspace[p][s][i]);
+            free(workspace[p][s]);
+        }
+        free(workspace[p]);
+    }
+    free(workspace);
+}
+
+static void free_ushort_grid(unsigned short int **grid)
+{
+    if (!grid) return;
+    for (int i = 0; i < vM; i++) free(grid[i]);
+    free(grid);
+}
+
+static void free_alreadyentered_workspace(unsigned short int ***workspace)
+{
+    if (!workspace) return;
+    for (int p = 0; p < num_polys; p++) free_ushort_grid(workspace[p]);
+    free(workspace);
+}
+
+static void clear_thread_state_workspace(void)
+{
+    for (int p = 0; p < num_polys; p++) {
+        for (int s = 0; s < 2; s++) {
+            for (int i = 0; i < vM; i++) {
+                memset(ordertemplate_master[p][s][i], 0, (size_t)vL * sizeof(unsigned int));
+                memset(reordertemplate_master[p][s][i], 0, (size_t)vL * sizeof(unsigned int));
+            }
+        }
+        for (int i = 0; i < vM; i++) {
+            memset(alreadyentered[p][i], 0, (size_t)vL * sizeof(unsigned short int));
+        }
+    }
+    for (int i = 0; i < vM; i++) {
+        memset(hingestatus[i], 0, (size_t)vL * sizeof(unsigned short int));
+        memset(colhingeedges[i], 0, (size_t)vL * sizeof(unsigned short int));
+        memset(rowhingeedges[i], 0, (size_t)vL * sizeof(unsigned short int));
+    }
+}
+
+static void allocate_thread_state_workspace(void)
+{
+    ordertemplate_master = alloc_template_workspace("thread order template workspace");
+    reordertemplate_master = alloc_template_workspace("thread reorder template workspace");
+    hingestatus = alloc_ushort_grid("thread hinge status grid");
+    colhingeedges = alloc_ushort_grid("thread column edge grid");
+    rowhingeedges = alloc_ushort_grid("thread row edge grid");
+    alreadyentered = alloc_alreadyentered_workspace();
+    section_template_scratch = (unsigned int *)xcalloc(section_template_len, sizeof(*section_template_scratch), "thread section template scratch");
+}
+
+static void free_thread_state_workspace(void)
+{
+    free_template_workspace(ordertemplate_master);
+    free_template_workspace(reordertemplate_master);
+    free_ushort_grid(hingestatus);
+    free_ushort_grid(colhingeedges);
+    free_ushort_grid(rowhingeedges);
+    free_alreadyentered_workspace(alreadyentered);
+    free(section_template_scratch);
+}
+
+static void init_alreadyentered_for_start(int start_idx)
+{
+    for (int idx = 0; idx < start_idx; idx++) {
+        int i = idx / vL;
+        int j = idx % vL;
+        alreadyentered[0][i][j] = 1;
+    }
+}
+
+static int requested_tm_state_threads(void)
+{
+    const char *value = getenv("TM_STATE_THREADS");
+    int threads = 1;
+
+    if (value && *value) {
+        char *endptr;
+        long parsed;
+        errno = 0;
+        parsed = strtol(value, &endptr, 10);
+        if (errno != 0 || *endptr != '\0' || parsed < 1 || parsed > INT_MAX) {
+            fprintf(stderr, "Error: TM_STATE_THREADS must be a positive integer (received '%s')\n", value);
+            exit(EXIT_FAILURE);
+        }
+        threads = (int)parsed;
+    }
+#ifdef _OPENMP
+    if (threads > omp_get_max_threads()) threads = omp_get_max_threads();
+#else
+    threads = 1;
+#endif
+    {
+        int starts = vM * vL - 1;
+        if (threads > starts) threads = starts;
+    }
+    return threads;
+}
+
+static void generate_state_space(int *ordNum)
+{
+    int state_threads = requested_tm_state_threads();
+    int starts = vM * vL - 1;
+
+    if (state_threads <= 1) {
+        for (int i = 0; i <= lat_M; i++) {
+            for (int j = 0; j <= lat_L; j++) {
+                if (!(i == lat_M && j == lat_L)) {
+                    enterhinge(i, j, 0, 0, (int(*)[])ordNum);
+                }
+                alreadyentered[0][i][j] = 1;
+            }
+        }
+        return;
+    }
+
+#ifdef _OPENMP
+    {
+        unsigned int ****master_ordertemplate = ordertemplate_master;
+        unsigned int ****master_reordertemplate = reordertemplate_master;
+        unsigned short int **master_hingestatus = hingestatus;
+        unsigned short int ***master_alreadyentered = alreadyentered;
+        unsigned short int **master_colhingeedges = colhingeedges;
+        unsigned short int **master_rowhingeedges = rowhingeedges;
+        unsigned int *master_section_template_scratch = section_template_scratch;
+
+        printf("[Phase 1] Using %d OpenMP state-space worker threads. Set TM_STATE_THREADS=1 for serial discovery order.\n", state_threads);
+        #pragma omp parallel num_threads(state_threads)
+        {
+            allocate_thread_state_workspace();
+            #pragma omp for schedule(dynamic)
+            for (int start_idx = 0; start_idx < starts; start_idx++) {
+                int local_ordNum[6];
+                int i = start_idx / vL;
+                int j = start_idx % vL;
+
+                clear_thread_state_workspace();
+                init_alreadyentered_for_start(start_idx);
+                for (int p = 0; p < num_polys; p++) {
+                    local_ordNum[p * 3 + 0] = 1;
+                    local_ordNum[p * 3 + 1] = 1;
+                    local_ordNum[p * 3 + 2] = 0;
+                }
+                enterhinge(i, j, 0, 0, (int(*)[])local_ordNum);
+            }
+            free_thread_state_workspace();
+        }
+
+        ordertemplate_master = master_ordertemplate;
+        reordertemplate_master = master_reordertemplate;
+        hingestatus = master_hingestatus;
+        alreadyentered = master_alreadyentered;
+        colhingeedges = master_colhingeedges;
+        rowhingeedges = master_rowhingeedges;
+        section_template_scratch = master_section_template_scratch;
+    }
+#else
+    (void)starts;
+    for (int i = 0; i <= lat_M; i++) {
+        for (int j = 0; j <= lat_L; j++) {
+            if (!(i == lat_M && j == lat_L)) enterhinge(i, j, 0, 0, (int(*)[])ordNum);
+            alreadyentered[0][i][j] = 1;
+        }
+    }
+#endif
 }
 
 #define HASH_SIZE 131072
@@ -738,7 +967,7 @@ int main(int argc, char **argv) {
     }
 
     double t_start = omp_get_wtime();
-    int ordNum[6], i, j;
+    int ordNum[6];
     unsigned long int state_idx;
     printf("[Phase 1] Initializing resources and generating state space...\n");
     allocate_resources();
@@ -749,7 +978,7 @@ int main(int argc, char **argv) {
     /* Try every lattice vertex except the upper-right sentinel as the first
        hinge. alreadyentered prevents generating the same state from an earlier
        starting vertex. */
-    for (i=0; i<=lat_M; i++) for (j=0; j<=lat_L; j++) { if(!(i==lat_M && j==lat_L)) enterhinge(i, j, 0, 0, (int(*)[])&ordNum); alreadyentered[0][i][j]=1; }
+    generate_state_space(ordNum);
     conv_to_array();
     double t_gen = omp_get_wtime();
     printf("[Phase 2] State space complete (%lu states). Solving eigenvalue problem...\n", actual_max_states);

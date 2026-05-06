@@ -7,9 +7,26 @@
 #include <limits.h>
 #include <stdarg.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 /* Monte Carlo sampler for modes 0/1. Modes 2/3 dispatch to the integrated
    2SAP entry points from mc_2sap_*_integrated.c, but they share the same CLI
    validation, RNG seed handling, and output conventions. */
+
+typedef struct McThreadRng {
+	unsigned int iran[43];
+	unsigned int iran1;
+	unsigned int ic;
+	unsigned int kounter;
+} McThreadRng;
+
+typedef struct McSampleRecord {
+	char *text;
+	unsigned long int reject_one;
+	unsigned long int reject_two;
+} McSampleRecord;
 
 static void checked_snprintf(char *buffer, size_t size, const char *fmt, ...) {
 	va_list args;
@@ -30,6 +47,200 @@ static void ensure_directory(const char *path) {
 		fprintf(stderr, "Could not create directory '%s': %s\n", path, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+}
+
+static void *sampler_xcalloc(size_t count, size_t size, const char *label)
+{
+	void *ptr = calloc(count, size);
+	if (!ptr) {
+		fprintf(stderr, "Fatal: unable to allocate %s (%zu x %zu bytes)\n", label, count, size);
+		exit(EXIT_FAILURE);
+	}
+	return ptr;
+}
+
+static unsigned int mix_sample_seed(unsigned int seed, unsigned long int sample_index)
+{
+	unsigned int x = seed ^ (unsigned int)(sample_index + 0x9e3779b9U);
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x ? x : 1U;
+}
+
+static void mc_thread_rng_init(McThreadRng *rng, unsigned int seed)
+{
+	int i, i1, j1;
+	unsigned int m, mm[3];
+	unsigned int bit;
+
+	rng->kounter = 0;
+	rng->ic = 0;
+	m = seed;
+	rng->iran1 = m;
+	for (i = 0; i < 3; i++) {
+		mm[i] = rng->iran1 - KWEYL;
+		rng->iran1 = mm[i];
+	}
+
+	for (i1 = 0; i1 < 43; i1++) {
+		rng->iran[i1] = 0;
+		for (j1 = 1; j1 <= 32; j1++) {
+			i = j1 + 32 * i1;
+			bit = m * mm[i % 3];
+			bit = ((bit % 64) < 32) ? 0U : 1U;
+			rng->iran[i1] += bit << (j1 - 1);
+			mm[i % 3] = (mm[0] * mm[1] * mm[2]) % 179;
+			m = (53 * m + 1) % 169;
+		}
+	}
+
+	rng->iran1 = 0;
+	for (i = 1; i <= 32; i++) {
+		bit = m * mm[i % 3];
+		bit = ((bit % 64) < 32) ? 0U : 1U;
+		rng->iran1 += bit << (i - 1);
+		mm[i % 3] = (mm[0] * mm[1] * mm[2]) % 179;
+		m = (53 * m + 1) % 169;
+	}
+}
+
+static double mc_thread_rng_real(McThreadRng *rng)
+{
+	int ir = rng->iran[(rng->kounter + 43 - 22) % 43] - rng->iran[rng->kounter] - rng->ic;
+	double r;
+
+	if (ir < 0) {
+		rng->iran[rng->kounter] = (ir + MaxInt5) % MaxInt5;
+		rng->ic = 1;
+	} else {
+		rng->iran[rng->kounter] = ir % MaxInt5;
+		rng->ic = 0;
+	}
+	rng->iran1 -= KWEYL;
+	r = (rng->iran[rng->kounter] - rng->iran1) * INVERSE_MAXINT;
+	rng->kounter = (rng->kounter + 1) % 43;
+	return r;
+}
+
+static int **sampler_alloc_int2(int rows, int cols, const char *label)
+{
+	int **arr = sampler_xcalloc((size_t)rows, sizeof(*arr), label);
+	int *data = sampler_xcalloc((size_t)rows * (size_t)cols, sizeof(*data), label);
+	int i;
+
+	for (i = 0; i < rows; i++) {
+		arr[i] = data + (size_t)i * (size_t)cols;
+	}
+	return arr;
+}
+
+static void sampler_free_int2(int **arr)
+{
+	if (arr) {
+		free(arr[0]);
+		free(arr);
+	}
+}
+
+static void reset_thread_built_walks(void)
+{
+	int i, j;
+	for (i = 0; i <= vM * vL / 2 - 1; i++) {
+		for (j = 0; j <= 2; j++) {
+			built_walks_start[i][j] = -1;
+			built_walks_end[i][j] = -1;
+		}
+		for (j = 0; j <= vM * vL * (totalspan + 1) - 1; j++) {
+			built_walks_direcs[i][j] = 0;
+		}
+	}
+	num_built_walks = 0;
+}
+
+static void copy_left_endhinge_to_thread_walks(unsigned long int secnum, int nth_endhinge)
+{
+	int nth_walk, i;
+
+	num_built_walks = Lend_num_walks[secnum][nth_endhinge];
+	for (nth_walk = 0; nth_walk <= num_built_walks - 1; nth_walk++) {
+		for (i = 0; i <= 2; i++) {
+			built_walks_start[nth_walk][i] = Lend_start[secnum][nth_endhinge][i][nth_walk];
+			built_walks_end[nth_walk][i] = Lend_end[secnum][nth_endhinge][i][nth_walk];
+		}
+		for (i = 0; i <= vM * vL; i++) {
+			built_walks_direcs[nth_walk][i] = Lend_walks[secnum][nth_endhinge][i][nth_walk];
+		}
+		for (i = vM * vL + 1; i <= vM * vL * (totalspan + 1) - 1; i++) {
+			built_walks_direcs[nth_walk][i] = 0;
+		}
+	}
+}
+
+static char *render_thread_sample_record(void)
+{
+	int max_directions = vM * vL * (totalspan + 1);
+	size_t cap = 64 + (size_t)(max_directions + 1) * 4U;
+	char *record = sampler_xcalloc(cap, sizeof(*record), "sample record");
+	size_t used = 0;
+	int written;
+	int i = 0;
+
+	written = snprintf(record + used, cap - used, "%d %d %d\n",
+		built_walks_start[0][0], built_walks_start[0][1], built_walks_start[0][2]);
+	if (written < 0 || (size_t)written >= cap - used) {
+		fprintf(stderr, "Fatal: sample record buffer too small\n");
+		exit(EXIT_FAILURE);
+	}
+	used += (size_t)written;
+
+	while (built_walks_direcs[0][i] != 0) {
+		written = snprintf(record + used, cap - used, "%d\n", built_walks_direcs[0][i]);
+		if (written < 0 || (size_t)written >= cap - used) {
+			fprintf(stderr, "Fatal: sample record buffer too small\n");
+			exit(EXIT_FAILURE);
+		}
+		used += (size_t)written;
+		i++;
+	}
+
+	written = snprintf(record + used, cap - used, "-111\n");
+	if (written < 0 || (size_t)written >= cap - used) {
+		fprintf(stderr, "Fatal: sample record buffer too small\n");
+		exit(EXIT_FAILURE);
+	}
+	return record;
+}
+
+static int requested_sample_threads(void)
+{
+	const char *value = getenv("MC_SAMPLE_THREADS");
+	int threads = 1;
+
+	if (value && *value) {
+		char *endptr;
+		long parsed;
+		errno = 0;
+		parsed = strtol(value, &endptr, 10);
+		if (errno != 0 || *endptr != '\0' || parsed < 1 || parsed > INT_MAX) {
+			fprintf(stderr, "Error: MC_SAMPLE_THREADS must be a positive integer (received '%s')\n", value);
+			exit(EXIT_FAILURE);
+		}
+		threads = (int)parsed;
+	}
+#ifdef _OPENMP
+	if (threads > omp_get_max_threads()) {
+		threads = omp_get_max_threads();
+	}
+#else
+	threads = 1;
+#endif
+	if (threads > samplesize) {
+		threads = samplesize;
+	}
+	return threads;
 }
 
 double generate_evectors() {
@@ -153,6 +364,118 @@ static int choose_middle_tspan(unsigned long int section, unsigned long int curr
 		sampler_fatal_selection("middle", section, limit, sumofprobs, prob);
 	}
 	return (int)nth_tspan;
+}
+
+static McSampleRecord build_parallel_sample_record(const McSamplerWeights *weights, unsigned long int sample_index)
+{
+	McThreadRng rng;
+	McSampleRecord record;
+	unsigned long int secnum, sec1, sec2;
+	int nth_endhinge;
+	int curspan;
+	int nth_tspan;
+	unsigned long int chosenLEH;
+	unsigned long int curLEH;
+	int chosenREH;
+	double prob;
+	double sumofprobs;
+	unsigned long int cur_tspan_num;
+
+	memset(&record, 0, sizeof(record));
+	mc_thread_rng_init(&rng, mix_sample_seed(seednum, sample_index));
+
+	for (;;) {
+		reset_thread_built_walks();
+
+		chosenLEH = floor(mc_thread_rng_real(&rng) * tot_left_endhinges);
+		if (chosenLEH >= weights->left_count) chosenLEH = weights->left_count - 1;
+
+		secnum = weights->left_section[chosenLEH];
+		nth_endhinge = weights->left_endhinge[chosenLEH];
+		curLEH = chosenLEH;
+		if (mc_thread_rng_real(&rng) < weights->left_acceptance[curLEH] / weights->max_left_acceptance) {
+			copy_left_endhinge_to_thread_walks(secnum, nth_endhinge);
+			curspan = 1;
+			sec1 = secnum;
+
+			prob = mc_thread_rng_real(&rng);
+			nth_tspan = choose_left_conditioned_tspan(sec1, weights->left_acceptance[curLEH], prob);
+			add_to_built_walks(sec1, nth_tspan);
+			sec2 = t_outsection[sec1][nth_tspan];
+			cur_tspan_num = t_nrr[sec1][nth_tspan];
+			curspan++;
+
+			while (curspan < totalspan) {
+				int i;
+				sumofprobs = 0.0;
+				for (i = 1; i <= (int)num_outsections[sec2]; i++) {
+					sumofprobs = sumofprobs + R_Evector_solve[0][t_nrr[sec2][i]] / R_Evector_solve[0][cur_tspan_num] / dom_evalue;
+				}
+
+				if (sumofprobs < 0.9 || sumofprobs > 1.1) {
+					fprintf(stderr, "Fatal: middle transition probabilities sum to %f from tspan %lu on sample %lu\n",
+						sumofprobs, cur_tspan_num, sample_index);
+					exit(EXIT_FAILURE);
+				}
+
+				prob = mc_thread_rng_real(&rng) * sumofprobs;
+				nth_tspan = choose_middle_tspan(sec2, cur_tspan_num, sumofprobs, prob);
+				sec1 = sec2;
+				add_to_built_walks(sec1, nth_tspan);
+				sec2 = t_outsection[sec1][nth_tspan];
+				cur_tspan_num = t_nrr[sec1][nth_tspan];
+				curspan++;
+			}
+
+			if (mc_thread_rng_real(&rng) < weights->right_acceptance[cur_tspan_num] / weights->max_right_acceptance) {
+				if (num_right_endhinges[sec2] == 0) {
+					fprintf(stderr, "Fatal: no right endhinges available for sampled terminal section %lu\n", sec2);
+					exit(EXIT_FAILURE);
+				}
+				chosenREH = 1 + floor(mc_thread_rng_real(&rng) * num_right_endhinges[sec2]);
+				if ((unsigned long int)chosenREH > num_right_endhinges[sec2]) chosenREH = (int)num_right_endhinges[sec2];
+				add_right_endhinge(sec2, chosenREH);
+				record.text = render_thread_sample_record();
+				return record;
+			}
+			record.reject_two++;
+		} else {
+			record.reject_one++;
+		}
+	}
+}
+
+static void rotate_sample_file_if_needed(void)
+{
+	if (filetotal < (unsigned long int)maxpolys) {
+		return;
+	}
+
+	printf("Finished filling file %lu. It contains %lu polys. Creating a new one.\n", filenum, filetotal);
+	fprintf(fp, "-999\n");
+	fclose(fp);
+	filenum++;
+	{
+		const char *file_prefix = ham_check ? "MCpolysHam" : "MCpolys";
+		checked_snprintf(filename, sizeof(filename), "%s/%sL%dM%dspan%drun%dnum%lu.txt", output_dir, file_prefix, L, M, totalspan, runnum, filenum);
+	}
+	fp = fopen(filename, "w");
+	if (fp != NULL) {
+		fprintf(fp, "UofS\n");
+		run_metadata_write(filename, "mc_master", "samples_uofs", mode, L, M, totalspan, seednum, runnum, dom_evalue);
+		printf("printed UofS in file '%s'\n", filename);
+	} else {
+		fprintf(stderr, "Could not open '%s' for writing: %s\n", filename, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	filetotal = 0;
+}
+
+static void write_sample_record_text(const char *text)
+{
+	rotate_sample_file_if_needed();
+	fputs(text, fp);
+	filetotal++;
 }
 
 static int parse_int_arg(const char *value, const char *label)
@@ -421,6 +744,67 @@ void run_rejection_sampler() {
 	int i, j;
 	unsigned long int reject_one=0;
 	unsigned long int reject_two=0;
+	int sample_threads = requested_sample_threads();
+
+	if (sample_threads > 1) {
+#ifdef _OPENMP
+		McSampleRecord *records = sampler_xcalloc((size_t)samplesize, sizeof(*records), "parallel sample records");
+		int **global_built_walks_start = built_walks_start;
+		int **global_built_walks_end = built_walks_end;
+		int **global_built_walks_direcs = built_walks_direcs;
+		int global_num_built_walks = num_built_walks;
+		unsigned long int sample_idx;
+
+		printf("Using %d OpenMP sample worker threads. Set MC_SAMPLE_THREADS=1 for legacy sequential RNG output.\n", sample_threads);
+		#pragma omp parallel num_threads(sample_threads) reduction(+:reject_one, reject_two)
+		{
+			int **thread_built_walks_start = sampler_alloc_int2(vM * vL / 2 + 1, 3, "thread built walk starts");
+			int **thread_built_walks_end = sampler_alloc_int2(vM * vL / 2 + 1, 3, "thread built walk ends");
+			int **thread_built_walks_direcs = sampler_alloc_int2(vM * vL / 2 + 1, vM * vL * (totalspan + 1) + 1, "thread built walk directions");
+
+			built_walks_start = thread_built_walks_start;
+			built_walks_end = thread_built_walks_end;
+			built_walks_direcs = thread_built_walks_direcs;
+			num_built_walks = 0;
+
+			#pragma omp for schedule(dynamic)
+			for (sample_idx = 0; sample_idx < (unsigned long int)samplesize; sample_idx++) {
+				McSampleRecord record = build_parallel_sample_record(&weights, sample_idx);
+				records[sample_idx] = record;
+				reject_one += record.reject_one;
+				reject_two += record.reject_two;
+			}
+
+			sampler_free_int2(thread_built_walks_start);
+			sampler_free_int2(thread_built_walks_end);
+			sampler_free_int2(thread_built_walks_direcs);
+		}
+
+		built_walks_start = global_built_walks_start;
+		built_walks_end = global_built_walks_end;
+		built_walks_direcs = global_built_walks_direcs;
+		num_built_walks = global_num_built_walks;
+
+		for (sample_idx = 0; sample_idx < (unsigned long int)samplesize; sample_idx++) {
+			write_sample_record_text(records[sample_idx].text);
+			free(records[sample_idx].text);
+		}
+		curSample = (unsigned long int)samplesize;
+		free(records);
+
+		fprintf(fp, "-999\n");
+		fclose(fp);
+		printf("File %lu contains %lu polys.\n", filenum, filetotal);
+		printf("\nSampling Complete.\n");
+		printf("\nRESULTS: %lu samples created from L=%d, M=%d, span=%d\n", curSample, L, M, totalspan);
+		printf("Rejected at first step %lu times\n", reject_one);
+		printf("Rejected at last step %lu times\n", reject_two);
+		mc_sampler_weights_free(&weights);
+		return;
+#else
+		fprintf(stderr, "Warning: MC_SAMPLE_THREADS ignored because this binary was built without OpenMP.\n");
+#endif
+	}
 
 	/* Each accepted polygon is assembled as:
 	   left endhinge -> first two-span -> optional interior two-spans ->

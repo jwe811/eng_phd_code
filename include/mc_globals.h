@@ -160,6 +160,9 @@ extern int **built_walks_start;
 extern int **built_walks_end;
 extern int **built_walks_direcs;
 extern int num_built_walks;
+#ifdef _OPENMP
+#pragma omp threadprivate(built_walks_start, built_walks_end, built_walks_direcs, num_built_walks)
+#endif
 
 extern char filename[100];
 extern FILE* fp;
