@@ -26,14 +26,16 @@ MC_SRC = $(SRCDIR)/MASTER_MCsample.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/mc_globa
          $(SRCDIR)/mc_builder.c $(SRCDIR)/mc_utils.c \
          $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
          $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_sampler_weights.c \
-         $(SRCDIR)/mc_paths.c $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c \
+         $(SRCDIR)/mc_paths.c $(SRCDIR)/mc_2sap_common.c \
+         $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c \
          $(SRCDIR)/run_metadata.c
 CREATOR_SRC = $(SRCDIR)/MASTER_CreatorAll.c $(SRCDIR)/mc_sysparams.c $(SRCDIR)/mc_globals.c \
               $(SRCDIR)/mc_builder.c $(SRCDIR)/mc_utils.c \
               $(SRCDIR)/mc_memory.c $(SRCDIR)/mc_validation.c $(SRCDIR)/mc_deps.c \
-              $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_paths.c $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c \
+              $(SRCDIR)/mc_spectral.c $(SRCDIR)/mc_paths.c $(SRCDIR)/mc_2sap_common.c \
+              $(SRCDIR)/mc_2sap_integrated.c $(SRCDIR)/mc_2sap_ham_integrated.c \
               $(SRCDIR)/run_metadata.c
-MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard deps/mc_compat/*/*.c) $(wildcard deps/utils/*.c)
+MC_INCLUDED_SRC = $(SRCDIR)/mc_deps_2sap.c $(wildcard $(SRCDIR)/mc_legacy/*/*.c) $(wildcard deps/utils/*.c)
 
 # Object files
 TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
@@ -68,10 +70,10 @@ $(CREATOR_OUT): $(CREATOR_OBJS)
 	$(CC) $(CREATOR_OBJS) -o $@ $(MC_CFLAGS)
 
 # Compile MC objects
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_sampler_weights.h $(INCDIR)/mc_paths.h $(INCDIR)/run_metadata.h $(MC_INCLUDED_SRC)
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_sampler_weights.h $(INCDIR)/mc_paths.h $(INCDIR)/mc_2sap_common.h $(INCDIR)/run_metadata.h $(MC_INCLUDED_SRC)
 	$(CC) -c $< -o $@ $(MC_CFLAGS)
 
-$(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_paths.h $(INCDIR)/run_metadata.h $(MC_INCLUDED_SRC)
+$(BUILDDIR)/%.creator.o: $(SRCDIR)/%.c $(INCDIR)/mc_globals.h $(INCDIR)/mc_runtime.h $(INCDIR)/mc_spectral.h $(INCDIR)/mc_paths.h $(INCDIR)/mc_2sap_common.h $(INCDIR)/run_metadata.h $(MC_INCLUDED_SRC)
 	$(CC) -c $< -o $@ $(MC_CFLAGS)
 
 clean:

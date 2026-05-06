@@ -75,27 +75,34 @@ unsigned long int filenum=1;
 
 unsigned int*** allocate_3d_uint(int d1, int d2, int d3) {
     unsigned int ***arr = (unsigned int***)mc_xmalloc(d1 * sizeof(unsigned int**), "3D unsigned int outer array");
+    unsigned int **planes = (unsigned int**)mc_xmalloc((size_t)d1 * d2 * sizeof(unsigned int*), "3D unsigned int plane table");
+    unsigned int *data = (unsigned int*)mc_xcalloc((size_t)d1 * d2 * d3, sizeof(unsigned int), "3D unsigned int data");
+
     for (int i = 0; i < d1; i++) {
-        arr[i] = (unsigned int**)mc_xmalloc(d2 * sizeof(unsigned int*), "3D unsigned int middle array");
+        arr[i] = planes + (size_t)i * d2;
         for (int j = 0; j < d2; j++) {
-            arr[i][j] = (unsigned int*)mc_xcalloc(d3, sizeof(unsigned int), "3D unsigned int row");
+            arr[i][j] = data + ((size_t)i * d2 + j) * d3;
         }
     }
     return arr;
 }
 
 unsigned short int** allocate_2d_ushort(int d1, int d2) {
-    unsigned short int **arr = (unsigned short int**)mc_xmalloc(d1 * sizeof(unsigned short int*), "2D unsigned short outer array");
+    unsigned short int **arr = (unsigned short int**)mc_xmalloc(d1 * sizeof(unsigned short int*), "2D unsigned short row table");
+    unsigned short int *data = (unsigned short int*)mc_xcalloc((size_t)d1 * d2, sizeof(unsigned short int), "2D unsigned short data");
+
     for (int i = 0; i < d1; i++) {
-        arr[i] = (unsigned short int*)mc_xcalloc(d2, sizeof(unsigned short int), "2D unsigned short row");
+        arr[i] = data + (size_t)i * d2;
     }
     return arr;
 }
 
 int** allocate_2d_int(int d1, int d2) {
-    int **arr = (int**)mc_xmalloc(d1 * sizeof(int*), "2D int outer array");
+    int **arr = (int**)mc_xmalloc(d1 * sizeof(int*), "2D int row table");
+    int *data = (int*)mc_xcalloc((size_t)d1 * d2, sizeof(int), "2D int data");
+
     for (int i = 0; i < d1; i++) {
-        arr[i] = (int*)mc_xcalloc(d2, sizeof(int), "2D int row");
+        arr[i] = data + (size_t)i * d2;
     }
     return arr;
 }

@@ -423,6 +423,7 @@ src/
   mc_builder.c             SAP graph/endhinge discovery for MC
   mc_2sap_integrated.c     Integrated mode 2 sampler
   mc_2sap_ham_integrated.c Integrated mode 3 sampler
+  mc_legacy/               Source-level legacy helpers still included by MC
 
 include/
   tm_runtime.h             TM runtime helpers and exact section hash table
@@ -431,12 +432,12 @@ include/
   mc_spectral.h            2SAP MC spectral interface
   mc_sampler_weights.h     Sampler weight interface
   mc_paths.h               Mode path/name interface
+  mc_2sap_common.h         Shared helpers for 2SAP/Ham2SAP samplers
   run_metadata.h           Output metadata interface
 
 deps/
   topology/, utils/        Topology and allocation helpers used by the engines
   numerics/                Small numerical routines shared by engine code
-  mc_compat/               Legacy-compatible helper code included by MC
 
 scripts/
   parity_audit.py          Automated TM and MC parity suite

@@ -528,15 +528,15 @@ void free_sampler_memory() {
 	   keeps leak checks useful while refactoring. */
 	int i;
 	if (built_walks_start) {
-		for (i = 0; i < vM * vL / 2 + 1; i++) free(built_walks_start[i]);
+		free(built_walks_start[0]);
 		free(built_walks_start);
 	}
 	if (built_walks_end) {
-		for (i = 0; i < vM * vL / 2 + 1; i++) free(built_walks_end[i]);
+		free(built_walks_end[0]);
 		free(built_walks_end);
 	}
 	if (built_walks_direcs) {
-		for (i = 0; i < vM * vL / 2 + 1; i++) free(built_walks_direcs[i]);
+		free(built_walks_direcs[0]);
 		free(built_walks_direcs);
 	}
 	
