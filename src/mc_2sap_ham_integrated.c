@@ -529,8 +529,8 @@ unsigned short int mc2h_temptestvector2[MAX_KEYNUM_ARR+1];	//used for the vector
 /******************* functions used in this program  ***********************/
 /***************************************************************************/
 
-int			system(const char *string);	/* called by main */
-			/* used solely for printing the date and timing the program */
+
+/* mc2h_conv_to_array	is only called by main and is declared in main */
 
 /* mc2h_conv_to_array	is only called by main and is declared in main */
 /* mc2h_conv_endhinges_to_array	is only called by main and is declared in main */
@@ -674,7 +674,6 @@ int run_integrated_2sap_ham_sampler(int argc, char *argv[])
 
 /**** functions called by main *********************************************/
 
-	clock_t         clock(void);
 	void            mc2h_conv_to_array(void);
 	void            mc2h_conv_endhinges_to_array(void);
 
@@ -2693,7 +2692,7 @@ mc2h_recordtemplate( int (*pointordNum)[6])
 		mc2h_sectionkey[i]=inNum2;
 		inNum2=i;
 	}
-//	printf("NEWinNum2=%d\n", inNum);
+//	printf("NEWinNum2=%d\n", inNum2);
 
 	unsigned long int	outNum2 = mc2h_num_section_norder2(1);
 //	printf("OGoutNum2=%d\n", outNum2);

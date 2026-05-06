@@ -362,7 +362,7 @@ recordtemplate( int (*pointordNum)[3])
 //	printf("NEWinNum=%d\n", inNum);
 
 	unsigned long int	outNum = num_section_norder(1);
-//	printf("OGoutNum=%d\n", inNum);
+//	printf("OGoutNum=%d\n", outNum);
 	//reset outNum to it's key number.
 	i=1;
 	found=0;
@@ -378,7 +378,7 @@ recordtemplate( int (*pointordNum)[3])
 		sectionkey[i]=outNum;
 		outNum=i;
 	}
-//	printf("NEWoutNum=%d\n", inNum);
+//	printf("NEWoutNum=%d\n", outNum);
 
 
 	int temp_hedges[vM*vL];

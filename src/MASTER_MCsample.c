@@ -199,6 +199,11 @@ void parse_args(int argc, char *argv[]) {
 				break;
 			default:
 				fprintf(stderr, "Usage: %s [-L L] [-M M] [-s totalspan] [-n samplesize] [-r runnum] [-S seednum] [-m mode]\n", argv[0]);
+				fprintf(stderr, "  -m mode      0=SAP, 1=HamSAP, 2=2SAP, 3=Ham2SAP\n");
+				fprintf(stderr, "  -L L         Lattice Width\n");
+				fprintf(stderr, "  -M M         Lattice Height\n");
+				fprintf(stderr, "  -s span      Total Span (number of sections)\n");
+				fprintf(stderr, "  -n size      Sample size (number of objects)\n");
 				exit(EXIT_FAILURE);
 		}
 	}

@@ -16,6 +16,15 @@ extern int max_sections;
 extern int max_tspans;
 extern unsigned long int max_keynum;
 extern double dom_evalue;
+extern int errno;
+
+static void ensure_directory(const char *path)
+{
+	if (mkdir(path, 0775) != 0 && errno != EEXIST) {
+		fprintf(stderr, "Fatal: could not create directory '%s': %s\n", path, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+}
 
 typedef struct Mc2SapSystemPreset {
 	int hamiltonian;
@@ -190,9 +199,9 @@ int mc_2sap_reverse_direction(int direction, const char *caller_name)
 
 void mc_2sap_open_sample_file(const Mc2SapSampleWriterConfig *config)
 {
-	mkdir("data", 0775);
-	mkdir("data/MonteCarlo", 0775);
-	mkdir(config->outdir, 0775);
+	ensure_directory("data");
+	ensure_directory("data/MonteCarlo");
+	ensure_directory(config->outdir);
 	mc_checked_snprintf(config->filename, config->filename_size, "%s/%sL%dM%dspan%drun%dnum%lu.txt",
 		config->outdir, config->prefix, config->L, config->M, config->totalspan, config->runnum, *config->filenum);
 	*config->fp = fopen(config->filename, "w");
@@ -678,9 +687,9 @@ int mc_2sap_run_creator_all(const Mc2SapCreatorConfig *config)
 		return EXIT_FAILURE;
 	}
 
-	mkdir("data", 0775);
-	mkdir("data/CreatorAll", 0775);
-	mkdir(config->outdir, 0775);
+	ensure_directory("data");
+	ensure_directory("data/CreatorAll");
+	ensure_directory(config->outdir);
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.config = config;
 	(void)mc_2sap_creator_enumerate(&ctx, 1);

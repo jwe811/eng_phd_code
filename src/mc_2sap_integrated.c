@@ -518,8 +518,8 @@ unsigned long int mc2_filenum=1;		//number of polygon files created.
 /******************* functions used in this program  ***********************/
 /***************************************************************************/
 
-int			system(const char *string);	/* called by main */
-			/* used solely for printing the date and timing the program */
+
+/* mc2_conv_to_array	is only called by main and is declared in main */
 
 /* mc2_conv_to_array	is only called by main and is declared in main */
 /* mc2_conv_endhinges_to_array	is only called by main and is declared in main */
@@ -663,7 +663,6 @@ int run_integrated_2sap_sampler(int argc, char *argv[])
 
 /**** functions called by main *********************************************/
 
-	clock_t         clock(void);
 	void            mc2_conv_to_array(void);
 	void            mc2_conv_endhinges_to_array(void);
 
@@ -2345,7 +2344,7 @@ mc2_recordtemplate( int (*pointordNum)[6])
 		mc2_sectionkey[i]=inNum2;
 		inNum2=i;
 	}
-//	printf("NEWinNum2=%d\n", inNum);
+//	printf("NEWinNum2=%d\n", inNum2);
 
 	unsigned long int	outNum2 = mc2_num_section_norder2(1);
 //	printf("OGoutNum2=%d\n", outNum2);
