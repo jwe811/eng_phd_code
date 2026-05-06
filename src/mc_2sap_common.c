@@ -144,3 +144,95 @@ int ***mc_2sap_alloc_int3_fixed(unsigned long entries, int components, unsigned 
 
 	return table;
 }
+
+static size_t mc_2sap_next_power_of_two(size_t value)
+{
+	size_t capacity = 1;
+	while (capacity < value) {
+		capacity <<= 1;
+	}
+	return capacity;
+}
+
+static size_t mc_2sap_pair_hash(unsigned long int first, unsigned long int second)
+{
+	unsigned long int hash = 14695981039346656037ULL;
+
+	hash ^= first;
+	hash *= 1099511628211ULL;
+	hash ^= second;
+	hash *= 1099511628211ULL;
+	return (size_t)hash;
+}
+
+void mc_2sap_pair_map_init(Mc2SapPairMap *map, unsigned long int max_entries)
+{
+	size_t capacity = mc_2sap_next_power_of_two(((size_t)max_entries + 1) * 2);
+
+	map->capacity = capacity;
+	map->first = (unsigned long int *)mc_xcalloc(capacity, sizeof(*map->first), "2SAP pair map first keys");
+	map->second = (unsigned long int *)mc_xcalloc(capacity, sizeof(*map->second), "2SAP pair map second keys");
+	map->value = (unsigned long int *)mc_xcalloc(capacity, sizeof(*map->value), "2SAP pair map values");
+}
+
+void mc_2sap_pair_map_free(Mc2SapPairMap *map)
+{
+	free(map->first);
+	free(map->second);
+	free(map->value);
+	map->first = NULL;
+	map->second = NULL;
+	map->value = NULL;
+	map->capacity = 0;
+}
+
+void mc_2sap_pair_map_put(Mc2SapPairMap *map, unsigned long int first, unsigned long int second, unsigned long int value)
+{
+	size_t mask = map->capacity - 1;
+	size_t slot = mc_2sap_pair_hash(first, second) & mask;
+
+	if (first == 0 || second == 0 || value == 0) {
+		fprintf(stderr, "Fatal: invalid zero key while building 2SAP pair map\n");
+		exit(EXIT_FAILURE);
+	}
+
+	while (map->value[slot] != 0) {
+		if (map->first[slot] == first && map->second[slot] == second) {
+			map->value[slot] = value;
+			return;
+		}
+		slot = (slot + 1) & mask;
+	}
+
+	map->first[slot] = first;
+	map->second[slot] = second;
+	map->value[slot] = value;
+}
+
+unsigned long int mc_2sap_pair_map_get(const Mc2SapPairMap *map, unsigned long int first, unsigned long int second)
+{
+	size_t mask = map->capacity - 1;
+	size_t slot = mc_2sap_pair_hash(first, second) & mask;
+
+	while (map->value[slot] != 0) {
+		if (map->first[slot] == first && map->second[slot] == second) {
+			return map->value[slot];
+		}
+		slot = (slot + 1) & mask;
+	}
+
+	return 0;
+}
+
+void mc_2sap_pair_map_build(Mc2SapPairMap *map, unsigned long int max_entries, unsigned long int pairs[][2])
+{
+	unsigned long int key;
+
+	mc_2sap_pair_map_init(map, max_entries);
+	for (key = 1; key <= max_entries; key++) {
+		if (pairs[key][0] == 0) {
+			continue;
+		}
+		mc_2sap_pair_map_put(map, pairs[key][0], pairs[key][1], key);
+	}
+}

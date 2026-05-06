@@ -42,7 +42,7 @@ TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
 CREATOR_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.creator.o, $(CREATOR_SRC))
 
-.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit postprocess-test quick-check check directories
+.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit postprocess-test cli-test bench quick-check check directories
 
 all: directories $(TM_OUT) $(MC_OUT) $(CREATOR_OUT)
 
@@ -99,6 +99,12 @@ parity-audit: all
 postprocess-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/postprocess_smoke.py
 
-quick-check: all postprocess-test
+cli-test: all
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/cli_smoke.py
 
-check: all postprocess-test parity-audit
+bench: all
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/benchmark.py
+
+quick-check: all postprocess-test cli-test
+
+check: all postprocess-test cli-test parity-audit

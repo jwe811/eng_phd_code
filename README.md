@@ -22,6 +22,12 @@ The main tools are:
 The current engines are source-level C. They do not use on-the-fly compilation,
 `-Dmain=...`, `objcopy`, or symbol prefixing for the 2SAP modes.
 
+Deeper reference notes live in:
+
+- [UofS coordinate format](docs/uofs_format.md)
+- [Parity and regression checks](docs/parity.md)
+- [Developer notes](docs/developer_notes.md)
+
 [Ph.D. dissertation](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496)
 
 ## First Five Minutes
@@ -360,8 +366,10 @@ make sampler          # Build only bin/mc_master
 make creator          # Build only bin/creator_all
 make test             # Run a small CSR/eigenvector audit
 make verify           # Run transfer-matrix benchmark table
-make parity-audit     # Run TM and MC parity checks
+make parity-audit     # Run TM, MC, and CreatorAll parity checks
 make postprocess-test # Run smoke tests for Python post-processing tools
+make cli-test         # Check clear failures for invalid CLI inputs
+make bench            # Run small runtime benchmarks
 make quick-check      # Build everything and run fast smoke tests
 make check            # Build everything and run the full local audit suite
 make clean            # Remove build artifacts only: build/ and bin/
@@ -381,7 +389,8 @@ make parity-audit
 ```
 
 It runs transfer-matrix benchmarks across all four modes for `2x1`, `2x2`, and
-`3x1`, plus Monte Carlo benchmarks across all four modes.
+`3x1`, Monte Carlo benchmarks across all four modes, and CreatorAll exact-span
+count/SHA/UofS-validation checks across all four modes.
 
 The critical 2SAP sampler benchmark is:
 
@@ -440,7 +449,7 @@ deps/
   numerics/                Small numerical routines shared by engine code
 
 scripts/
-  parity_audit.py          Automated TM and MC parity suite
+  parity_audit.py          Automated TM, MC, and CreatorAll parity suite
   audit_engine.py          CSR/eigenvector consistency audit
   uofs_tool.py             UofS conversion, validation, counting, and contacts
   spectral_tool.py         CSR/eigenvector post-processing audits
@@ -453,6 +462,11 @@ postprocess/
   spectral.py              CSR/eigenvector audit helpers
   bfacf.py                 BFACF-style shrink heuristic
   topology.py              Linking-number helpers
+
+docs/
+  uofs_format.md           UofS file format and coordinate convention
+  parity.md                Regression and parity benchmark notes
+  developer_notes.md       Refactor guidance and architecture notes
 ```
 
 ## Architecture Notes

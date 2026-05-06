@@ -1664,7 +1664,8 @@ void mc2h_conv_to_array(void)
 		//key=key number assigned to this ordered pairing.
 	//Also fill mc2h_num_outsections at the same time.
 	int i, j;
-	int found;
+	Mc2SapPairMap pair_map;
+	unsigned long int pair_key;
 
 	for(i=1; i<=max_keynum; i++){
 		mc2h_sectionkey2SAP[i][0]=0;
@@ -1673,29 +1674,28 @@ void mc2h_conv_to_array(void)
 	}
 
 	int keycounter=0;
+	mc_2sap_pair_map_init(&pair_map, max_keynum);
 
 	for(i=1; i<=max_sections; i++){
 		mc2h_current_hinge_span[i] = mc2h_first_hinge_span[i];
 		while(mc2h_current_hinge_span[i]->nexthinge != NULL) {
 			mc2h_current_hinge_span[i] = mc2h_current_hinge_span[i]->nexthinge;
 //			printf("looking at section composed of sections %d and %lu (on the left)\n", i, mc2h_current_hinge_span[i]->inorder2);
-			j=1;
-			found=0;
-			while(mc2h_sectionkey2SAP[j][0]!=0){
-				if(mc2h_sectionkey2SAP[j][0]==i && mc2h_sectionkey2SAP[j][1]==mc2h_current_hinge_span[i]->inorder2){
-//					printf("combo found in key already\n");
-					found=1;
-					mc2h_num_outsections[j]++;
-					break;
-				}
-				j++;
+			pair_key = mc_2sap_pair_map_get(&pair_map, (unsigned long int)i, mc2h_current_hinge_span[i]->inorder2);
+			if(pair_key!=0){
+				mc2h_num_outsections[pair_key]++;
 			}
-			if(found==0){	//need to record sections into mc2h_sectionkey2SAP
-//				printf("combo not in key yet. adding: j=%d, sec1=%d, sec2=%lu\n", j, i, mc2h_current_hinge_span[i]->inorder2);
+			else{	//need to record sections into mc2h_sectionkey2SAP
 				keycounter++;
-				mc2h_sectionkey2SAP[j][0] = i;
-				mc2h_sectionkey2SAP[j][1] = mc2h_current_hinge_span[i]->inorder2;
-				mc2h_num_outsections[j]++;
+				if((unsigned long int)keycounter > max_keynum){
+					fprintf(stderr, "Fatal: exceeded Hamiltonian 2SAP key capacity (%lu)\n", max_keynum);
+					exit(EXIT_FAILURE);
+				}
+				pair_key = (unsigned long int)keycounter;
+				mc2h_sectionkey2SAP[pair_key][0] = (unsigned long int)i;
+				mc2h_sectionkey2SAP[pair_key][1] = mc2h_current_hinge_span[i]->inorder2;
+				mc2h_num_outsections[pair_key]++;
+				mc_2sap_pair_map_put(&pair_map, (unsigned long int)i, mc2h_current_hinge_span[i]->inorder2, pair_key);
 			}	
 		}
 	}
@@ -1738,27 +1738,12 @@ void mc2h_conv_to_array(void)
 //			printf("this hinge is made up of sections %lu,%lu -> %lu,%lu\n", section_num, (*mc2h_current_hinge_span[section_num]).inorder2, (*mc2h_current_hinge_span[section_num]).outorder, (*mc2h_current_hinge_span[section_num]).outorder2);
 
 			//get keynums
-			sec1key=0;
-			for(i=1; i<=max_keynum; i++){
-//				printf("keynum=%d, match: %lu,%lu ?\n", i, mc2h_sectionkey2SAP[i][0], mc2h_sectionkey2SAP[i][1]);
-				if(mc2h_sectionkey2SAP[i][0]==section_num && mc2h_sectionkey2SAP[i][1]==(*mc2h_current_hinge_span[section_num]).inorder2){
-//					printf("sec1key=%d\n", i);
-					sec1key=i;
-					break;
-				}
-			}
+			sec1key=mc_2sap_pair_map_get(&pair_map, section_num, (*mc2h_current_hinge_span[section_num]).inorder2);
 			if(sec1key==0){
 				printf("error: didn't find sec1key. Exitting\n");
 				exit(1);
 			}
-			sec2key=0;
-			for(i=1; i<=max_keynum; i++){
-				if(mc2h_sectionkey2SAP[i][0]==(*mc2h_current_hinge_span[section_num]).outorder && mc2h_sectionkey2SAP[i][1]==(*mc2h_current_hinge_span[section_num]).outorder2){
-//					printf("sec2key=%d\n", i);
-					sec2key=i;
-					break;
-				}
-			}
+			sec2key=mc_2sap_pair_map_get(&pair_map, (*mc2h_current_hinge_span[section_num]).outorder, (*mc2h_current_hinge_span[section_num]).outorder2);
 			if(sec2key==0){
 				printf("error: didn't find sec2key. Sections were %lu,%lu. Exitting\n", (*mc2h_current_hinge_span[section_num]).outorder, (*mc2h_current_hinge_span[section_num]).outorder2);
 				exit(1);
@@ -1802,27 +1787,12 @@ void mc2h_conv_to_array(void)
 			free(hinge_to_free);
 
 			//get keynums
-			sec1key=0;
-			for(i=1; i<=max_keynum; i++){
-//				printf("keynum=%d, match: %lu,%lu ?\n", i, mc2h_sectionkey2SAP[i][0], mc2h_sectionkey2SAP[i][1]);
-				if(mc2h_sectionkey2SAP[i][0]==section_num && mc2h_sectionkey2SAP[i][1]==(*mc2h_current_hinge_span[section_num]).inorder2){
-//					printf("sec1key=%d\n", i);
-					sec1key=i;
-					break;
-				}
-			}
+			sec1key=mc_2sap_pair_map_get(&pair_map, section_num, (*mc2h_current_hinge_span[section_num]).inorder2);
 			if(sec1key==0){
 				printf("error: didn't find sec1key. Exitting\n");
 				exit(1);
 			}
-			sec2key=0;
-			for(i=1; i<=max_keynum; i++){
-				if(mc2h_sectionkey2SAP[i][0]==(*mc2h_current_hinge_span[section_num]).outorder && mc2h_sectionkey2SAP[i][1]==(*mc2h_current_hinge_span[section_num]).outorder2){
-//					printf("sec2key=%d\n", i);
-					sec2key=i;
-					break;
-				}
-			}
+			sec2key=mc_2sap_pair_map_get(&pair_map, (*mc2h_current_hinge_span[section_num]).outorder, (*mc2h_current_hinge_span[section_num]).outorder2);
 			if(sec2key==0){
 				printf("error: didn't find sec2key. Sections were %lu,%lu. Exitting\n", (*mc2h_current_hinge_span[section_num]).outorder, (*mc2h_current_hinge_span[section_num]).outorder2);
 				exit(1);
@@ -1879,9 +1849,7 @@ void mc2h_conv_to_array(void)
 	
 
 
-
-
-
+	mc_2sap_pair_map_free(&pair_map);
 	return;
 }
 
@@ -1901,7 +1869,10 @@ void mc2h_conv_endhinges_to_array(void)
 
 	unsigned long int section_num;
 	unsigned long int sec1key;
+	Mc2SapPairMap pair_map;
 	struct endhinge *hinge_to_free;
+
+	mc_2sap_pair_map_build(&pair_map, max_keynum, mc2h_sectionkey2SAP);
 
 	for(i=1; i<=max_keynum; i++){
 		mc2h_num_left_endhinges[i]=0;
@@ -1914,15 +1885,7 @@ void mc2h_conv_endhinges_to_array(void)
 			mc2h_currentendhinge[section_num] = (*mc2h_currentendhinge[section_num]).nextendhinge;
 
 			//get keynum
-			sec1key=0;
-			for(i=1; i<=max_keynum; i++){
-//				printf("keynum=%d, match: %lu,%lu ?\n", i, mc2h_sectionkey2SAP[i][0], mc2h_sectionkey2SAP[i][1]);
-				if(mc2h_sectionkey2SAP[i][0]==section_num && mc2h_sectionkey2SAP[i][1]==(*mc2h_currentendhinge[section_num]).sec2){
-//					printf("sec1key=%d\n", i);
-					sec1key=i;
-					break;
-				}
-			}
+			sec1key=mc_2sap_pair_map_get(&pair_map, section_num, (*mc2h_currentendhinge[section_num]).sec2);
 			if(sec1key==0){
 				printf("error: didn't find sec1key. Exitting\n");
 				exit(1);
@@ -1985,15 +1948,7 @@ void mc2h_conv_endhinges_to_array(void)
 			free(hinge_to_free);
 
 			//get keynum
-			sec1key=0;
-			for(i=1; i<=max_keynum; i++){
-//				printf("keynum=%d, match: %lu,%lu ?\n", i, mc2h_sectionkey2SAP[i][0], mc2h_sectionkey2SAP[i][1]);
-				if(mc2h_sectionkey2SAP[i][0]==section_num && mc2h_sectionkey2SAP[i][1]==(*mc2h_currentendhinge[section_num]).sec2){
-//					printf("sec1key=%d\n", i);
-					sec1key=i;
-					break;
-				}
-			}
+			sec1key=mc_2sap_pair_map_get(&pair_map, section_num, (*mc2h_currentendhinge[section_num]).sec2);
 			if(sec1key==0){
 				printf("error: didn't find sec1key. Exitting\n");
 				exit(1);
@@ -2048,6 +2003,7 @@ void mc2h_conv_endhinges_to_array(void)
 		}
 	}
 	
+	mc_2sap_pair_map_free(&pair_map);
 	return;
 }
 

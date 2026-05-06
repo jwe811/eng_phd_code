@@ -44,6 +44,18 @@ class MonteCarloBenchmark:
     output_sha256: str
 
 
+@dataclass(frozen=True)
+class CreatorAllBenchmark:
+    L: int
+    M: int
+    span: int
+    mode: int
+    name: str
+    expected_count: int
+    output_path: str
+    output_sha256: str
+
+
 TM_BENCHMARKS = (
     TransferMatrixBenchmark(2, 1, 0, "standard", 2.286331),
     TransferMatrixBenchmark(2, 1, 1, "hamiltonian", 1.553873),
@@ -124,6 +136,50 @@ MC_BENCHMARKS = (
         reject_last=3,
         output_path="data/MonteCarlo/Ham2SAPs/MC2SAPsHamL2M1span2run304num1.txt",
         output_sha256="11726d6423c1213a180af142e0ef9ec466119279d75b02743a4d84deb53bc617",
+    ),
+)
+
+
+CREATOR_BENCHMARKS = (
+    CreatorAllBenchmark(
+        L=1,
+        M=1,
+        span=2,
+        mode=0,
+        name="standard",
+        expected_count=170,
+        output_path="data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt",
+        output_sha256="b60e89bf08878691754fe6192deee13ed345beb63344631c30593bb64a098c13",
+    ),
+    CreatorAllBenchmark(
+        L=1,
+        M=1,
+        span=2,
+        mode=1,
+        name="hamiltonian",
+        expected_count=22,
+        output_path="data/CreatorAll/All_HamSAPs/AllHamSAPsL1M1span2num1.txt",
+        output_sha256="6cfd9cfbf5f6f9d7dc334fc4cf0be1e4b61e7a230862462d734f029f04f14480",
+    ),
+    CreatorAllBenchmark(
+        L=2,
+        M=1,
+        span=2,
+        mode=2,
+        name="2sap",
+        expected_count=624,
+        output_path="data/CreatorAll/All_2SAPs/All2SAPsL2M1span2num1.txt",
+        output_sha256="0fa7a4981d4ab4ceb13b500baa4172bf49adc2c18a0cc84aa8332a650e496732",
+    ),
+    CreatorAllBenchmark(
+        L=2,
+        M=1,
+        span=2,
+        mode=3,
+        name="2sap_ham",
+        expected_count=92,
+        output_path="data/CreatorAll/All_Ham2SAPs/AllHam2SAPsL2M1span2num1.txt",
+        output_sha256="760e5ae986da4c11fc4f150e5a940a7ffe83c159a4f91278106bda676d6c39ee",
     ),
 )
 
@@ -285,25 +341,102 @@ def audit_monte_carlo(benchmarks: tuple[MonteCarloBenchmark, ...], quiet: bool) 
     return failures
 
 
+def audit_creator_all(benchmarks: tuple[CreatorAllBenchmark, ...], quiet: bool) -> int:
+    failures = 0
+    print("\nCreatorAll Parity")
+    print("mode        lattice/span  count     sha      validate  status")
+    print("----------  ------------  --------  -------  --------  ------")
+
+    for bench in benchmarks:
+        cmd = [
+            "bin/creator_all",
+            "-L",
+            str(bench.L),
+            "-M",
+            str(bench.M),
+            "-s",
+            str(bench.span),
+            "-m",
+            str(bench.mode),
+        ]
+        try:
+            output = clean_output(run_command(cmd, quiet=True))
+            count = parse_int(r"Generated\s+(\d+)\s+", output, "CreatorAll count")
+            if count != bench.expected_count:
+                raise AssertionError(f"count got {count}, expected {bench.expected_count}")
+
+            output_path = ROOT / bench.output_path
+            if not output_path.is_file():
+                raise AssertionError(f"missing generated UofS file {bench.output_path}")
+
+            digest = sha256_file(output_path)
+            if digest != bench.output_sha256:
+                raise AssertionError(f"sha256 got {digest}, expected {bench.output_sha256}")
+
+            validation_output = run_command(
+                [
+                    "python3",
+                    "scripts/uofs_tool.py",
+                    "validate",
+                    bench.output_path,
+                    "-L",
+                    str(bench.L),
+                    "-M",
+                    str(bench.M),
+                    "-s",
+                    str(bench.span),
+                ],
+                quiet=True,
+            )
+            failed = parse_int(r"failed_objects:\s+(\d+)", validation_output, "CreatorAll validation failures")
+            if failed != 0:
+                raise AssertionError(f"UofS validation reported {failed} failed objects")
+
+            status = "PASS"
+            sha_status = "match"
+            validate_status = "ok"
+        except Exception as exc:
+            count = -1
+            sha_status = "mismatch"
+            validate_status = "fail"
+            status = f"FAIL: {exc}"
+            failures += 1
+
+        print(
+            f"{bench.name:<10}  {bench.L}x{bench.M}/s{bench.span:<4} "
+            f"{count:8d}  {sha_status:<7}  {validate_status:<8}  {status}"
+        )
+
+    return failures
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run archival parity audits for TM and MC engines.")
+    parser = argparse.ArgumentParser(description="Run archival parity audits for TM, MC, and CreatorAll engines.")
     parser.add_argument("--no-build", action="store_true", help="Skip the initial make all build step.")
     parser.add_argument("--tm-only", action="store_true", help="Run only transfer-matrix benchmarks.")
     parser.add_argument("--mc-only", action="store_true", help="Run only Monte Carlo sampler benchmarks.")
+    parser.add_argument("--creator-only", action="store_true", help="Run only CreatorAll benchmarks.")
     parser.add_argument("--quiet", action="store_true", help="Suppress command output unless a test fails.")
     args = parser.parse_args()
 
-    if args.tm_only and args.mc_only:
-        parser.error("--tm-only and --mc-only cannot be combined")
+    only_flags = [args.tm_only, args.mc_only, args.creator_only]
+    if sum(1 for flag in only_flags if flag) > 1:
+        parser.error("--tm-only, --mc-only, and --creator-only cannot be combined")
 
     if not args.no_build:
         run_command(["make", "all"], quiet=args.quiet)
 
     failures = 0
-    if not args.mc_only:
+    if args.creator_only:
+        failures += audit_creator_all(CREATOR_BENCHMARKS, quiet=args.quiet)
+    elif args.tm_only:
         failures += audit_transfer_matrix(TM_BENCHMARKS, quiet=args.quiet)
-    if not args.tm_only:
+    elif args.mc_only:
         failures += audit_monte_carlo(MC_BENCHMARKS, quiet=args.quiet)
+    else:
+        failures += audit_transfer_matrix(TM_BENCHMARKS, quiet=args.quiet)
+        failures += audit_monte_carlo(MC_BENCHMARKS, quiet=args.quiet)
+        failures += audit_creator_all(CREATOR_BENCHMARKS, quiet=args.quiet)
 
     if failures:
         print(f"\nParity audit failed: {failures} benchmark(s) failed.", file=sys.stderr)
