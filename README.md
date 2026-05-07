@@ -132,4 +132,4 @@ This toolkit was developed as part of a Ph.D. research project on the topologica
 - **Coordinate Convention**: Tube direction is always `x`, width is `y`, and height is `z`.
 
 ---
-*Developed by J. Enger*
+*Developed by Dr. Jeremy Eng*
