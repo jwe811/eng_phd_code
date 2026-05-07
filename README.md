@@ -5,7 +5,7 @@
 ![Node](https://img.shields.io/badge/language-Node.js-yellow.svg)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 
-A high-performance research toolkit for the study of **Self-Avoiding Polygons (SAPs)** and **Two-Polygon Systems (2SAPs)** in finite $L \times M$ lattice tubes. This project supports the topological and statistical analysis of SAPs through transfer-matrix methods, Monte Carlo sampling, and interactive visualization.
+A high-performance research toolkit for the study of **Self-Avoiding Polygons (SAPs)** and **Two-Polygon Systems (2SAPs)** in finite $L \times M$ lattice tubes. This project supports the topological and statistical analysis of SAPs and 2SAPs using transfer-matrix methods, Monte Carlo sampling, and interactive visualization.
 
 Developed as part of my [Ph.D. dissertation](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496).
 
@@ -150,10 +150,10 @@ The SAP Workbench provides a graphical interface for:
 ### Simulation Modes
 | Mode | Name | Meaning |
 | :--- | :--- | :------ |
-| `0` | Standard SAP | Single self-avoiding polygon |
-| `1` | Hamiltonian SAP | Polygon visiting every vertex in each section |
+| `0` | SAP | Single self-avoiding polygon |
+| `1` | Hamiltonian SAP | Polygon visiting every vertex |
 | `2` | 2SAP | Two polygons sharing the same lattice |
-| `3` | 2SAP-Hamiltonian | Two polygons whose union is Hamiltonian |
+| `3` | Hamiltonian 2SAP | Two polygons whose union is Hamiltonian |
 
 ### Coordinate Convention
 The toolkit uses a consistent coordinate system:
@@ -166,7 +166,7 @@ For details on the `UofS` output format, see [docs/uofs_format.md](docs/uofs_for
 ### 🎓 Citation
 If you use this toolkit in your research, please cite the following dissertation:
 
-> **Eng, Jeremy.** (2020). *Topological and Statistical Properties of Self-Avoiding Polygons in Lattice Tubes*. Ph.D. Dissertation, University of Saskatchewan. [Available at Harvest](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496).
+> **Eng, Jeremy.** (2020). *A Transfer Matrix Approach to Studying the Entanglement Complexity of Self-Avoiding Polygons in Lattice Tubes*. Ph.D. Dissertation, University of Saskatchewan. [Available at Harvest](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496).
 
 ---
 
