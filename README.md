@@ -1,17 +1,61 @@
 # SAP and 2SAP Research Toolkit
 
-This repository contains a high-performance C and Python toolkit for studying **Self-Avoiding Polygons (SAPs)** and **Two-Polygon Systems (2SAPs)** in finite $L \times M$ lattice tubes. 
+![C](https://img.shields.io/badge/language-C-blue.svg)
+![Python](https://img.shields.io/badge/language-Python-green.svg)
+![Node](https://img.shields.io/badge/language-Node.js-yellow.svg)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 
-The toolkit supports transfer-matrix construction, spectral calculations, exact exhaustive enumeration, and Monte Carlo sampling. It also includes an interactive web-based workbench for visualization and analysis.
+A high-performance research toolkit for the study of **Self-Avoiding Polygons (SAPs)** and **Two-Polygon Systems (2SAPs)** in finite $L \times M$ lattice tubes. This project supports the topological and statistical analysis of SAPs through transfer-matrix methods, Monte Carlo sampling, and interactive visualization.
+
+Developed as part of a Ph.D. dissertation at the University of Saskatchewan.
 
 ---
 
-## 🚀 Getting Started (From Scratch)
+## 📑 Table of Contents
+- [Features](#-features)
+- [Project Architecture](#-project-architecture)
+- [Getting Started](#-getting-started)
+  - [Prerequisites](#1-prerequisites)
+  - [Installation](#2-installation)
+  - [Web Workbench Setup](#3-web-workbench-setup)
+- [Core Workflows (CLI)](#-core-workflows-cli)
+- [Interactive Workbench](#-interactive-workbench)
+- [Project Structure](#-project-structure)
+- [Academic Context & Citation](#-academic-context--citation)
+- [License](#-license)
+
+---
+
+## ✨ Features
+- **Transfer-Matrix Engine**: High-performance C implementation for spectral calculations and connective constant estimation.
+- **Monte Carlo Sampler**: Transition-indexed right eigenvector guided sampling for SAPs and 2SAPs.
+- **Exhaustive Enumeration**: Tools for generating every possible configuration in small lattices.
+- **Web Workbench**: A modern React/Vite/FastAPI interface for simulation management and 3D visualization.
+- **Topological Analysis**: Automated calculation of linking numbers, edge distributions, and contact statistics.
+
+---
+
+## 🏗 Project Architecture
+
+```mermaid
+graph TD
+    A[C Core Binaries] -->|Data Export| B[UofS File Format]
+    B --> C[Python Post-processing]
+    C --> D[FastAPI Backend]
+    D --> E[React Web Frontend]
+    E -->|Command Trigger| A
+    E -->|Visualization| F[3D Canvas - Three.js]
+```
+
+---
+
+## 🚀 Getting Started
 
 ### 1. Prerequisites
-Ensure you have the following installed on your system (Ubuntu/WSL2 recommended):
-- **C Development**: `gcc`, `make`, and OpenMP support (typically included with `gcc`).
-- **Python**: Python 3.10+ with `venv` support.
+Ensure you have the following installed (Ubuntu/WSL2 recommended):
+- **C Development**: `gcc`, `make`, and **OpenMP**.
+  - *Note for macOS users*: Standard `clang` does not include OpenMP; use `brew install llvm` and configure your compiler flags.
+- **Python**: Python 3.10+ with `venv`.
 - **Web Development**: Node.js 18+ and `npm`.
 
 ### 2. Installation
@@ -23,7 +67,7 @@ make -j$(nproc)
 ```
 
 ### 3. Web Workbench Setup
-The interactive workbench requires a Python virtual environment for the backend and `npm` packages for the frontend:
+The workbench uses a Python backend and a React frontend.
 
 **Backend Setup:**
 ```bash
@@ -42,7 +86,7 @@ cd ../..
 ```
 
 ### 4. Launching the Workbench
-Once setup is complete, you can launch both the backend and frontend with a single command:
+Launch both services with a single command:
 ```bash
 make web-dev
 ```
@@ -68,7 +112,7 @@ bin/mc_master -L 2 -M 1 -m 0 -s 5 -n 50 -r 1 -S 12345
 ```
 
 ### Transfer-Matrix Calculations
-Calculate connective constants, amplitudes, and export eigenvectors.
+Calculate connective constants and export eigenvectors.
 ```bash
 # Standard SAP connective constant for a 2x1 tube
 bin/tm_master -L 2 -M 1 -m 0
@@ -77,59 +121,57 @@ bin/tm_master -L 2 -M 1 -m 0
 ---
 
 ## 🌐 Interactive Workbench
-The SAP Workbench provides a graphical interface for the entire research lifecycle:
-
-- **Run Launcher**: Configure and start simulations with live command previews.
-- **Job History**: Track background processes, view logs, and manage run results.
-- **Data Browser**: Navigate generated files with built-in **Raw Text View**.
-- **3D Visualize**: Interactive 3D rendering (Rotate, Pan, Zoom) of any SAP or 2SAP object.
-- **Analysis**: Automatic generation of distribution charts for edges, spans, contacts, and topological linking numbers.
+The SAP Workbench provides a graphical interface for:
+- **Run Launcher**: Visual configuration of simulation parameters.
+- **Job History**: Monitoring background processes and logs.
+- **Data Browser**: Navigating the `data/` directory with raw text and 3D preview.
+- **3D Visualize**: Interactive WebGL rendering of polygon structures.
+- **Analysis**: Real-time plotting of edge counts, spans, and topological data.
 
 ---
 
-## 📖 Reference
+## 📂 Project Structure
+```text
+.
+├── bin/            # Compiled C binaries
+├── data/           # Simulation outputs and results
+├── docs/           # Detailed documentation (File formats, etc.)
+├── include/        # C header files
+├── src/            # Core C implementation
+├── scripts/        # Python tools for analysis and automation
+├── web/            # Full-stack workbench (FastAPI + React)
+└── Makefile        # Build system
+```
+
+---
+
+## 📖 Reference & Academic Context
 
 ### Simulation Modes
 | Mode | Name | Meaning |
 | :--- | :--- | :------ |
-| `0` | Standard SAP | One self-avoiding polygon |
-| `1` | Hamiltonian SAP | One polygon visiting every vertex in each lattice section |
-| `2` | 2SAP | Two polygons sharing the same physical lattice |
+| `0` | Standard SAP | Single self-avoiding polygon |
+| `1` | Hamiltonian SAP | Polygon visiting every vertex in each section |
+| `2` | 2SAP | Two polygons sharing the same lattice |
 | `3` | 2SAP-Hamiltonian | Two polygons whose union is Hamiltonian |
 
-### UofS File Format
-Most outputs use the `UofS` direction format. 
-- **1-6**: Directions (+x, -x, +y, -y, +z, -z)
-- **-111**: End of polygon
-- **-999**: End of file
+### Coordinate Convention
+The toolkit uses a consistent coordinate system:
+- **X-axis**: Tube direction (span).
+- **Y-axis**: Tube width ($L$).
+- **Z-axis**: Tube height ($M$).
 
-See [docs/uofs_format.md](docs/uofs_format.md) for full coordinate details.
+For details on the `UofS` output format, see [docs/uofs_format.md](docs/uofs_format.md).
 
-### Output Directory Map
-```text
-data/
-  TransferMatrix/
-    TMresults/       CSR matrices and eigenvectors
-  MonteCarlo/
-    SAPs/            Mode 0 random samples
-    2SAPs/           Mode 2 random samples
-  CreatorAll/
-    All_SAPs/        Mode 0 exhaustive generation
-```
+### 🎓 Citation
+If you use this toolkit in your research, please cite the following dissertation:
 
-### Build Commands
-- `make`: Build all core binaries.
-- `make check`: Run the full local audit and parity suite.
-- `make parity-audit`: Run regression checks against known benchmarks.
-- `make clean`: Remove build artifacts.
+> **Eng, Jeremy.** (2020). *Topological and Statistical Properties of Self-Avoiding Polygons in Lattice Tubes*. Ph.D. Dissertation, University of Saskatchewan. [Available at Harvest](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496).
 
 ---
 
-## 🎓 Academic Context
-This toolkit was developed as part of a Ph.D. research project on the topological and statistical properties of self-avoiding polygons.
-
-- **Ph.D. Dissertation**: [Link to University of Saskatchewan Library](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496)
-- **Coordinate Convention**: Tube direction is always `x`, width is `y`, and height is `z`.
+## ⚖ License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. (Drafting note: Ensure a LICENSE file is present in the repository).
 
 ---
-*Developed by Dr. Jeremy Eng*
+*Maintained by Dr. Jeremy Eng*
