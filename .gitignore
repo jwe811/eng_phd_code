@@ -14,6 +14,13 @@ data/CreatorAll/
 __pycache__/
 *.pyc
 
+# Web workbench local artifacts
+web/backend/runtime/
+web/backend/.venv/
+web/frontend/node_modules/
+web/frontend/dist/
+web/frontend/.vite/
+
 # Local/IDE settings
 .codex
 .agents/

@@ -44,7 +44,7 @@ TM_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.tm.o, $(TM_SRC))
 MC_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(MC_SRC))
 CREATOR_OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.creator.o, $(CREATOR_SRC))
 
-.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit parity-audit-slow postprocess-test cli-test bench quick-check check check-slow debug asan profile directories
+.PHONY: all clean clean-data distclean tm sampler creator test verify parity-audit parity-audit-slow postprocess-test cli-test bench quick-check check check-slow debug asan profile directories web-backend web-frontend web-dev web-test
 
 all: directories $(TM_OUT) $(MC_OUT) $(CREATOR_OUT)
 
@@ -109,6 +109,19 @@ cli-test: all
 
 bench: all
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/benchmark.py
+
+web-backend:
+	PYTHONPATH=$(CURDIR):$(CURDIR)/web/backend web/backend/.venv/bin/uvicorn app.main:app --app-dir web/backend --reload --host 127.0.0.1 --port 8000
+
+web-frontend:
+	cd web/frontend && npm run dev
+
+web-dev:
+	bash scripts/web_dev.sh
+
+web-test:
+	PYTHONPATH=$(CURDIR):$(CURDIR)/web/backend web/backend/.venv/bin/pytest web/backend/tests
+	cd web/frontend && npm test
 
 quick-check: all postprocess-test cli-test
 
