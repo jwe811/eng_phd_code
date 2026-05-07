@@ -12,6 +12,7 @@ The main tools are:
 - `bin/mc_master`: Monte Carlo sampling for SAP, Hamiltonian SAP, 2SAP, and
   Hamiltonian 2SAP modes.
 - `bin/creator_all`: exhaustive exact-span generation for all four modes.
+- `make web-dev`: launches the interactive SAP Workbench (FastAPI/React).
 - `scripts/uofs_tool.py`: conversion, validation, counting, canonicalization,
   deduplication, and contact-map analysis for generated files.
 - `scripts/spectral_tool.py`: audits over exported transfer-matrix CSR data and
@@ -19,8 +20,13 @@ The main tools are:
 - `scripts/topology_tool.py`: BFACF-style shrink labels, label tallies,
   split-by-label output, and basic linking-number calculations.
 
-The current engines are source-level C. They do not use on-the-fly compilation,
-`-Dmain=...`, `objcopy`, or symbol prefixing for the 2SAP modes.
+Interactive workbench features:
+
+- **Run Launcher**: Guarded simulation runs with command previews.
+- **Job History**: SQLite-backed history of all local runs and logs.
+- **Data Browser**: Directory-based navigation for SAP and 2SAP results.
+- **3D Visualization**: Interactive Three.js-based object viewer.
+- **Automated Analysis**: One-click summary, edge/span distributions, and linking number charts.
 
 Deeper reference notes live in:
 
@@ -30,7 +36,7 @@ Deeper reference notes live in:
 
 [Ph.D. dissertation](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496)
 
-## First Five Minutes
+## Quick-Start
 
 Build everything:
 
@@ -77,7 +83,11 @@ bin/tm_master -L 2 -M 1 -m 0
 - Python 3
 - Bash, for `scripts/verify_all.sh`
 
-No third-party Python packages are required.
+For the Web Workbench:
+
+- **Node.js 18+** and **npm** for the React frontend.
+- **Python 3.10+** with `venv` support for the FastAPI backend.
+- Dependencies in `web/backend/requirements.txt` and `web/frontend/package.json`.
 
 ## Concepts
 
@@ -369,6 +379,46 @@ conservative. It writes one single-token label per polygon:
   may be a true knot, or it may be an unknot that this simple shrink pass did
   not simplify far enough.
 
+## Web Workbench
+
+The repository includes a modern web interface for managing the simulation
+lifecycle without using the command line directly.
+
+### Starting the Workbench
+
+Initialize dependencies (first time only):
+
+```bash
+# Frontend
+cd web/frontend && npm install
+
+# Backend
+cd ../backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+Launch the development environment:
+
+```bash
+make web-dev
+```
+
+This starts the FastAPI backend at `http://127.0.0.1:8000` and the Vite/React
+frontend at `http://127.0.0.1:5173`.
+
+### Features
+
+- **Launcher**: Configure L, M, span, and samples with real-time command
+  previews.
+- **Jobs**: Track background processes, view live log tails, and cancel hung
+  runs.
+- **Data**: Browse the `data/` directory with smart filtering for SAP and 2SAP
+  outputs.
+- **Visualize**: Interactive 3D rendering of any UofS object.
+- **Analysis**: Automatic distribution charts for edge counts, spans, contacts,
+  linking numbers, and topological labels.
+
 ## Build And Test Commands
 
 ```bash
@@ -484,6 +534,10 @@ docs/
   uofs_format.md           UofS file format and coordinate convention
   parity.md                Regression and parity benchmark notes
   developer_notes.md       Refactor guidance and architecture notes
+
+web/
+  backend/                 FastAPI application, SQLite job store, and analysis API
+  frontend/                React/TypeScript application using Three.js and Recharts
 ```
 
 ## Architecture Notes
