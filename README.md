@@ -17,7 +17,7 @@ Ensure you have the following installed on your system (Ubuntu/WSL2 recommended)
 ### 2. Installation
 Clone the repository and build the core C binaries:
 ```bash
-git clone https://github.com SaskatoonSAP/eng_phd_code.git
+git clone https://github.com/jwe811/eng_phd_code.git
 cd eng_phd_code
 make -j$(nproc)
 ```
