@@ -13,6 +13,7 @@ from postprocess.analysis import aggregate_contacts, edge_count_distribution
 from postprocess.bfacf import shrink_label
 from postprocess.topology import linking_number
 from postprocess.uofs import (
+    Polygon,
     canonical_object,
     read_objects,
     validate_object,
@@ -49,6 +50,11 @@ def main() -> None:
         assert len(read_objects(out)) == 1
         assert sum(aggregate_contacts(objects).values()) == 0
         assert linking_number(objects[0].polygons[0], objects[0].polygons[0]) == 0
+
+        # Regression test for a 2SAP pair whose coordinate projections are degenerate
+        poly_a = Polygon((2, 0, 0), (2, 2, 3, 1, 1, 5, 4, 6))
+        poly_b = Polygon((2, 2, 0), (2, 2, 5, 4, 4, 1, 3, 3, 1, 6))
+        assert linking_number(poly_a, poly_b) == 0
 
     print("postprocess smoke tests passed")
 
