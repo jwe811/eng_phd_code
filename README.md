@@ -7,7 +7,7 @@
 
 A high-performance research toolkit for the study of **Self-Avoiding Polygons (SAPs)** and **Two-Polygon Systems (2SAPs)** in finite $L \times M$ lattice tubes. This project supports the topological and statistical analysis of SAPs through transfer-matrix methods, Monte Carlo sampling, and interactive visualization.
 
-Developed as part of a Ph.D. dissertation at the University of Saskatchewan.
+Developed as part of my [Ph.D. dissertation](https://harvest.usask.ca/items/021d9d39-cc85-4584-a7ca-2d594f462496).
 
 ---
 
