@@ -171,7 +171,7 @@ If you use this toolkit in your research, please cite the following dissertation
 ---
 
 ## ⚖ License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. (Drafting note: Ensure a LICENSE file is present in the repository).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
-*Maintained by Dr. Jeremy Eng*
+*Created by Dr. Jeremy Eng*
