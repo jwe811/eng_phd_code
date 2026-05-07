@@ -49,6 +49,13 @@ export type UofsObject = {
   object_count: number;
   validation_errors: string[];
   polygons: Array<{ start: [number, number, number]; length: number; points: Array<[number, number, number]> }>;
+  L: number | null;
+  M: number | null;
+  span: number | null;
+  span_x: number;
+  contacts: number;
+  shrink_labels: string[];
+  linking_number: number | string | null;
 };
 
 export type UofsSummary = {
@@ -59,6 +66,9 @@ export type UofsSummary = {
   average_edges_per_object: number;
   average_x_span: number;
   polys_per_object: number;
+  L: number | null;
+  M: number | null;
+  span: number | null;
 };
 
 export type DataBrowserItem = {

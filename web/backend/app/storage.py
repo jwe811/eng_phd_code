@@ -57,10 +57,6 @@ class LocalResultStorage:
         for child in sorted(directory.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
             if child.name.startswith("."):
                 continue
-            if directory == data_root and child.name not in {"CreatorAll", "MonteCarlo"}:
-                continue
-            if directory == monte_carlo_root and child.name not in monte_carlo_polygon_dirs:
-                continue
             if child.is_dir():
                 items.append(DataBrowserItem(name=child.name, path=repo_relative(child), is_dir=True, kind="directory"))
             elif child.is_file() and child.suffix != ".meta":

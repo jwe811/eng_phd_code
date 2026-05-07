@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, BarChart3, Box, ClipboardCheck, Database, FileText, Folder, Play, RefreshCw, Search, StopCircle, X } from 'lucide-react';
+import { Activity, BarChart3, Box, ClipboardCheck, Database, Eye, FileText, Folder, Play, RefreshCw, Search, StopCircle, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { api, AnalysisAction, AnalysisResult, commandPreview, DataBrowserListing, Job, JobRequest, ResultFile, TextFile, UofsSummary, validateRequest } from './lib/api';
 import { PolygonPreview } from './components/PolygonPreview';
@@ -23,6 +23,11 @@ function isSapOr2SapOutput(path: string): boolean {
   if (!path.startsWith('data/') || !filename.endsWith('.txt') || filename.endsWith('.meta')) return false;
   if (lowered.includes('evector') || lowered.includes('transfermatrix')) return false;
   return /^(MCpolys|MC2SAPs|AllSAPs|All2SAPs|AllHamSAPs|AllHam2SAPs)/.test(filename);
+}
+
+function isTextFile(path: string): boolean {
+  const filename = path.split('/').pop() ?? '';
+  return filename.endsWith('.txt') && !filename.endsWith('.meta');
 }
 
 function relatedMetaPath(path: string, outputPaths: string[]): string {
@@ -112,7 +117,6 @@ function Launcher(props: { onJob: (job: Job) => void; onToast: (message: string)
           <h2>Run Launcher</h2>
           <p>Guarded local runs with command preview and persisted job history.</p>
         </div>
-        <Play size={20} />
       </div>
       <div className="tabs">
         {(['creator', 'mc', 'tm'] as const).map((name) => (
@@ -209,7 +213,6 @@ function JobsPanel(props: { selectedJob?: Job; onSelect: (job: Job) => void; onV
           <h2>Jobs</h2>
           <p>SQLite-backed local history and logs.</p>
         </div>
-        <button className="icon" onClick={refresh} aria-label="Refresh jobs"><RefreshCw size={18} /></button>
       </div>
       <div className="job-list">
         {loading && <Skeleton lines={4} />}
@@ -244,11 +247,56 @@ function JobsPanel(props: { selectedJob?: Job; onSelect: (job: Job) => void; onV
   );
 }
 
+function RawFileViewer(props: { path: string; onClose: () => void }) {
+  const [text, setText] = React.useState<string | null>(null);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setText(null);
+    setError('');
+    api.fileText(props.path)
+      .then((result) => { if (!cancelled) setText(result.text); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); });
+    return () => { cancelled = true; };
+  }, [props.path]);
+
+  React.useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') props.onClose();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [props.onClose]);
+
+  return (
+    <div className="raw-viewer-overlay" onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
+      <div className="raw-viewer">
+        <div className="raw-viewer-header">
+          <div>
+            <strong>{props.path.split('/').pop()}</strong>
+            <small>{props.path}</small>
+          </div>
+          <button className="icon" onClick={props.onClose} aria-label="Close viewer"><X size={20} /></button>
+        </div>
+        {error && <div className="errors">{error}</div>}
+        {text === null && !error && <Skeleton lines={12} />}
+        {text !== null && (
+          <div className="raw-viewer-content">
+            <textarea readOnly value={text} spellCheck={false} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DataPanel(props: { onVisualize: (path: string) => void; onAnalyze: (path: string, action: AnalysisAction) => void; onToast: (message: string) => void }) {
   const [directory, setDirectory] = React.useState('data');
   const [listing, setListing] = React.useState<DataBrowserListing | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [viewingFile, setViewingFile] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -269,7 +317,7 @@ function DataPanel(props: { onVisualize: (path: string) => void; onAnalyze: (pat
     };
   }, [directory]);
 
-  const filteredItems = listing?.items.filter(item => item.is_dir || isSapOr2SapOutput(item.path)) || [];
+  const filteredItems = listing?.items.filter(item => item.is_dir || isTextFile(item.path)) || [];
 
   return (
     <section className="panel">
@@ -278,7 +326,6 @@ function DataPanel(props: { onVisualize: (path: string) => void; onAnalyze: (pat
           <h2>Data</h2>
           <p>Repo-local SAP and 2SAP files.</p>
         </div>
-        <Database size={20} />
       </div>
       
       <div className="browser-path-header">
@@ -296,7 +343,7 @@ function DataPanel(props: { onVisualize: (path: string) => void; onAnalyze: (pat
               <Folder size={17} /><span>..</span><small>Parent directory</small>
             </button>
           )}
-          {filteredItems.length === 0 && <EmptyState title="No SAP files found" detail="No SAP or 2SAP files were found in this directory." />}
+          {filteredItems.length === 0 && <EmptyState title="No files found" detail="No text files were found in this directory." />}
           {filteredItems.map((item) => (
             <div key={item.path} className="data-row">
               <div className="data-info" onClick={() => item.is_dir && setDirectory(item.path)} style={{ cursor: item.is_dir ? 'pointer' : 'default' }}>
@@ -308,14 +355,20 @@ function DataPanel(props: { onVisualize: (path: string) => void; onAnalyze: (pat
               </div>
               {!item.is_dir && (
                 <div className="button-strip">
-                  <button onClick={() => props.onVisualize(item.path)}>Visualize</button>
-                  <button onClick={() => props.onAnalyze(item.path, 'summary')}>Analysis</button>
+                  <button onClick={() => setViewingFile(item.path)} title="View raw file"><Eye size={15} /></button>
+                  {item.kind === 'uofs' && (
+                    <>
+                      <button onClick={() => props.onVisualize(item.path)}>Visualize</button>
+                      <button onClick={() => props.onAnalyze(item.path, 'summary')}>Analysis</button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+      {viewingFile && <RawFileViewer path={viewingFile} onClose={() => setViewingFile(null)} />}
     </section>
   );
 }
@@ -464,6 +517,7 @@ function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathCha
   const [path, setPath] = React.useState(props.path);
   const [browserOpen, setBrowserOpen] = React.useState(false);
   const [result, setResult] = React.useState<AnalysisResult | null>(null);
+  const [activeAction, setActiveAction] = React.useState<AnalysisAction | undefined>(props.action);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
@@ -472,10 +526,14 @@ function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathCha
   }, [props.path]);
 
   React.useEffect(() => {
-    if (props.path && props.action) run(props.action, props.path);
+    if (props.path && props.action) {
+      setActiveAction(props.action);
+      run(props.action, props.path);
+    }
   }, [props.path, props.action]);
 
   async function run(action: AnalysisAction, targetPath = path) {
+    setActiveAction(action);
     setLoading(true);
     setError('');
     setResult(null);
@@ -502,7 +560,6 @@ function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathCha
           <h2>Analysis</h2>
           <p>Run postprocessing helpers on UofS files.</p>
         </div>
-        <Search size={20} />
       </div>
       <label className="field">
         <span>UofS path</span>
@@ -514,12 +571,18 @@ function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathCha
       {browserOpen && <UofsBrowser currentPath={path} onClose={() => setBrowserOpen(false)} onChoose={(nextPath) => { setPath(nextPath); props.onPathChange(nextPath); setBrowserOpen(false); }} />}
       <div className="analysis-actions">
         {analysisActions.map((item) => (
-          <button key={item.action} onClick={() => run(item.action)} disabled={loading}>{item.label}</button>
+          <button key={item.action} className={activeAction === item.action ? 'active' : ''} onClick={() => run(item.action)} disabled={loading}>{item.label}</button>
         ))}
       </div>
       {error && <div className="errors">{error}</div>}
       {loading && <Skeleton lines={5} />}
-      {!loading && !result && !error && <EmptyState title="No analysis yet" detail="Choose a file and run one of the analysis actions." />}
+      {!loading && !result && !error && (
+        !path ? (
+          <EmptyState title="No file selected" detail="Please choose a SAP/2SAP file to analyze." />
+        ) : (
+          <EmptyState title="No analysis yet" detail="Choose an analysis action above to begin." />
+        )
+      )}
       {result && !loading && (
         <div className="analysis-output">
           <h3>{analysisActions.find((item) => item.action === result.action)?.label ?? result.action}</h3>
@@ -562,6 +625,11 @@ function PreviewPanel(props: { path: string; onPathChange: (path: string) => voi
     setIndex(0);
   }, [props.path]);
   React.useEffect(() => {
+    if (!path) {
+      setSummary(null);
+      setSummaryError('');
+      return () => {};
+    }
     let cancelled = false;
     setSummary(null);
     setSummaryError('');
@@ -585,7 +653,6 @@ function PreviewPanel(props: { path: string; onPathChange: (path: string) => voi
           <h2>Visualize</h2>
           <p>Interactive 3D UofS object viewer.</p>
         </div>
-        <Box size={20} />
       </div>
       <label className="field">
         <span>UofS path</span>
@@ -596,20 +663,29 @@ function PreviewPanel(props: { path: string; onPathChange: (path: string) => voi
       </label>
       {browserOpen && <UofsBrowser currentPath={path} onClose={() => setBrowserOpen(false)} onChoose={(nextPath) => { setPath(nextPath); props.onPathChange(nextPath); setIndex(0); setBrowserOpen(false); }} />}
       {summaryError && <div className="errors">{summaryError}</div>}
-      {summary ? (
-        <div className="metadata-grid">
-          <div><span>Objects</span><strong>{summary.objects}</strong></div>
-          <div><span>Polygons</span><strong>{summary.polygons}</strong></div>
-          <div><span>Total edges</span><strong>{summary.total_edges}</strong></div>
-          <div><span>Average x-span</span><strong>{summary.average_x_span.toFixed(2)}</strong></div>
-        </div>
-      ) : !summaryError ? <Skeleton lines={2} /> : null}
-      <div className="preview-controls">
-        <button disabled={index <= 0 || objectCount === 0} onClick={() => setIndex(Math.max(0, index - 1))}>Previous</button>
-        <span>{objectCount > 0 ? `Object ${index + 1} of ${objectCount}` : 'No objects loaded'}</span>
-        <button disabled={objectCount === 0 || index >= maxIndex} onClick={() => setIndex(Math.min(maxIndex, index + 1))}>Next</button>
-      </div>
-      <PolygonPreview path={path} index={index} />
+      {!path ? (
+        <EmptyState title="No file selected" detail="Please choose a SAP/2SAP file to visualize." />
+      ) : (
+        <>
+          <div className="preview-controls">
+            <button disabled={index <= 0 || objectCount === 0} onClick={() => setIndex(Math.max(0, index - 1))}>Previous</button>
+            <div className="index-selector">
+              <span>Object</span>
+              <input
+                type="number"
+                value={objectCount > 0 ? index + 1 : ''}
+                onChange={(event) => {
+                  const val = event.currentTarget.value === '' ? 1 : Number(event.currentTarget.value);
+                  setIndex(Math.max(0, Math.min(objectCount - 1, val - 1)));
+                }}
+              />
+              <span>of {objectCount || 0}</span>
+            </div>
+            <button disabled={objectCount === 0 || index >= maxIndex} onClick={() => setIndex(Math.min(maxIndex, index + 1))}>Next</button>
+          </div>
+          <PolygonPreview path={path} index={index} />
+        </>
+      )}
     </section>
   );
 }
@@ -627,7 +703,7 @@ function Toast(props: { message: string; onDismiss: () => void }) {
 function App() {
   const [view, setView] = React.useState<'launcher' | 'jobs' | 'results' | 'visualize' | 'analysis'>('launcher');
   const [selectedJob, setSelectedJob] = React.useState<Job | undefined>();
-  const [uofsPath, setUofsPath] = React.useState('data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt');
+  const [uofsPath, setUofsPath] = React.useState('');
   const [analysisTarget, setAnalysisTarget] = React.useState<{ action?: AnalysisAction }>({});
   const [toast, setToast] = React.useState('');
   function showToast(message: string) {

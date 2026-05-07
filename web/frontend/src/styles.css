@@ -115,7 +115,7 @@ p, small {
   padding: 7px 11px;
 }
 
-.tabs button.active, .primary {
+.tabs button.active, .analysis-actions button.active, .primary {
   background: var(--brand-green);
   border-color: var(--brand-green);
   color: var(--brand-white);
@@ -323,6 +323,20 @@ pre {
   align-items: center;
   display: flex;
   gap: 10px;
+  justify-content: center;
+}
+
+.index-selector {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.index-selector input {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: center;
+  width: 72px;
 }
 
 .metadata-grid {
@@ -332,13 +346,16 @@ pre {
 }
 
 .metadata-grid div {
+  align-items: center;
   background: #fbfcf8;
   border: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 4px;
+  justify-content: center;
   min-width: 0;
   padding: 10px;
+  text-align: center;
 }
 
 .metadata-grid span {
@@ -662,4 +679,78 @@ td {
   .visualizer-toolbar {
     flex-direction: column;
   }
+}
+
+/* Raw file viewer modal */
+.raw-viewer-overlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 100;
+}
+
+.raw-viewer {
+  background: var(--brand-white);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  height: 90vh;
+  max-width: 1000px;
+  width: 92vw;
+}
+
+.raw-viewer-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.raw-viewer-header div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.raw-viewer-header strong {
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.raw-viewer-header small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.raw-viewer-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.raw-viewer-content textarea {
+  background: #fbfcf8;
+  border: 0;
+  color: #000;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  height: 100%;
+  line-height: 1.6;
+  outline: none;
+  padding: 16px 20px;
+  resize: none;
+  width: 100%;
 }
