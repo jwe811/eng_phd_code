@@ -13,6 +13,7 @@ class ResultStorage(Protocol):
     def list_results(self) -> list[ResultFile]: ...
     def browse(self, relative_path: str) -> DataBrowserListing: ...
     def resolve_data_path(self, relative_path: str) -> Path: ...
+    def resolve_text_path(self, relative_path: str) -> Path: ...
 
 
 class LocalResultStorage:
@@ -26,6 +27,15 @@ class LocalResultStorage:
         data_root = self.data_root.resolve()
         if not path.is_file() or data_root not in path.parents:
             raise ValueError("path must be an existing file under data/")
+        return path
+
+    def resolve_text_path(self, relative_path: str) -> Path:
+        path = (settings.root / relative_path).resolve()
+        data_root = self.data_root.resolve()
+        runtime_root = settings.runtime_root.resolve()
+        allowed = data_root in path.parents or runtime_root in path.parents
+        if not path.is_file() or not allowed or path.suffix not in {".txt", ".meta", ".log"}:
+            raise ValueError("path must be a text, metadata, or log file under data/ or web/backend/runtime/")
         return path
 
     def resolve_data_dir(self, relative_path: str) -> Path:
@@ -42,8 +52,14 @@ class LocalResultStorage:
         data_root = self.data_root.resolve()
         parent = directory.parent if directory != data_root else None
         items: list[DataBrowserItem] = []
+        monte_carlo_root = (data_root / "MonteCarlo").resolve()
+        monte_carlo_polygon_dirs = {"SAPs", "HamSAPs", "2SAPs", "Ham2SAPs"}
         for child in sorted(directory.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
             if child.name.startswith("."):
+                continue
+            if directory == data_root and child.name not in {"CreatorAll", "MonteCarlo"}:
+                continue
+            if directory == monte_carlo_root and child.name not in monte_carlo_polygon_dirs:
                 continue
             if child.is_dir():
                 items.append(DataBrowserItem(name=child.name, path=repo_relative(child), is_dir=True, kind="directory"))

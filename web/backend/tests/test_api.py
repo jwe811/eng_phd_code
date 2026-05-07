@@ -42,7 +42,29 @@ def test_results_scan() -> None:
 def test_data_browser_lists_data_root() -> None:
     listing = main.data_browser("data")
     assert listing.path == "data"
-    assert any(item.name in {"CreatorAll", "MonteCarlo", "TransferMatrix"} for item in listing.items)
+    names = {item.name for item in listing.items}
+    assert {"CreatorAll", "MonteCarlo"}.issubset(names)
+    assert "TransferMatrix" not in names
+
+
+def test_data_browser_hides_monte_carlo_evectors() -> None:
+    listing = main.data_browser("data/MonteCarlo")
+    names = {item.name for item in listing.items}
+    assert "MC_Evectors" not in names
+    assert names.issubset({"SAPs", "HamSAPs", "2SAPs", "Ham2SAPs"})
+
+
+def test_analysis_summary_and_validate_fixture() -> None:
+    path = "data/CreatorAll/All_SAPs/AllSAPsL1M1span2num1.txt"
+    summary = main.analysis(path, "summary")
+    assert summary["metrics"]["objects"] >= 1
+    validate = main.analysis(path, "validate")
+    assert validate["metrics"]["validated_objects"] >= 1
+
+
+def test_file_text_reads_metadata_fixture() -> None:
+    body = main.file_text("data/CreatorAll/All_SAPs/AllSAPsL1M1span2.summary.meta")
+    assert "text" in body
 
 
 def test_job_rejection_from_api() -> None:

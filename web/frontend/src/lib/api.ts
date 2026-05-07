@@ -75,6 +75,20 @@ export type DataBrowserListing = {
   items: DataBrowserItem[];
 };
 
+export type AnalysisAction = 'summary' | 'validate' | 'count_edges' | 'count_spans' | 'contacts' | 'linking_number' | 'shrink_labels';
+
+export type AnalysisResult = {
+  action: AnalysisAction;
+  path: string;
+  metrics: Record<string, unknown>;
+  rows: Array<Record<string, unknown>>;
+};
+
+export type TextFile = {
+  path: string;
+  text: string;
+};
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -115,7 +129,10 @@ export const api = {
   browseData: (path: string) => jsonFetch<DataBrowserListing>(`/api/data-browser?path=${encodeURIComponent(path)}`),
   uofsSummary: (path: string) => jsonFetch<UofsSummary>(`/api/uofs/summary?path=${encodeURIComponent(path)}`),
   uofsObject: (path: string, index: number) =>
-    jsonFetch<UofsObject>(`/api/uofs/object?path=${encodeURIComponent(path)}&index=${index}`)
+    jsonFetch<UofsObject>(`/api/uofs/object?path=${encodeURIComponent(path)}&index=${index}`),
+  analysis: (path: string, action: AnalysisAction) =>
+    jsonFetch<AnalysisResult>(`/api/analysis?path=${encodeURIComponent(path)}&action=${encodeURIComponent(action)}`),
+  fileText: (path: string) => jsonFetch<TextFile>(`/api/file-text?path=${encodeURIComponent(path)}`)
 };
 
 export function validateRequest(request: JobRequest): string[] {

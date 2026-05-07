@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .models import DataBrowserListing, JobCreate, JobDetail, ToolStatus
+from .analysis_api import run_analysis
 from .repositories import SQLiteJobRepository
 from .runner import LocalSubprocessRunner
 from .storage import LocalResultStorage
@@ -107,5 +108,23 @@ def uofs_object(path: str = Query(...), index: int = 0, polys_per_object: int | 
         return object_points(resolved, index, polys_per_object)
     except IndexError as exc:
         raise HTTPException(status_code=404, detail="object index not found") from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/analysis")
+def analysis(path: str = Query(...), action: str = Query(...)):
+    try:
+        resolved = storage.resolve_data_path(path)
+        return run_analysis(resolved, action)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/file-text")
+def file_text(path: str = Query(...)):
+    try:
+        resolved = storage.resolve_text_path(path)
+        return {"path": path, "text": resolved.read_text(encoding="utf-8", errors="replace")[-20000:]}
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
