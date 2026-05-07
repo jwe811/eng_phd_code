@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Activity, BarChart3, Box, ClipboardCheck, Database, FileText, Folder, Play, RefreshCw, Search, StopCircle, X } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { api, AnalysisAction, AnalysisResult, commandPreview, DataBrowserListing, Job, JobRequest, ResultFile, TextFile, UofsSummary, validateRequest } from './lib/api';
 import { PolygonPreview } from './components/PolygonPreview';
 import './styles.css';
@@ -230,21 +231,10 @@ function JobsPanel(props: { selectedJob?: Job; onSelect: (job: Job) => void; onV
               {detail.output_paths.filter(isSapOr2SapOutput).map((path) => (
                 <div className="quick-action-row" key={path}>
                   <span>{path}</span>
-                  <button onClick={() => props.onVisualize(path)}>Visualize output</button>
-                  <button onClick={() => props.onAnalyze(path, 'summary')}>Run summary</button>
-                  <button onClick={() => props.onAnalyze(path, 'validate')}>Validate</button>
-                  <button onClick={() => showMetadata(relatedMetaPath(path, detail.output_paths))}>View metadata</button>
+                  <button onClick={() => props.onVisualize(path)}>Visualize</button>
+                  <button onClick={() => props.onAnalyze(path, 'summary')}>Analysis</button>
                 </div>
               ))}
-            </div>
-          )}
-          {metadata && (
-            <div className="metadata-box">
-              <div className="detail-actions">
-                <strong>{metadata.path}</strong>
-                <button className="icon" onClick={() => setMetadata(null)} aria-label="Close metadata"><X size={16} /></button>
-              </div>
-              <pre>{metadata.text}</pre>
             </div>
           )}
           <pre>{detail.log_tail || 'No logs yet.'}</pre>
@@ -254,47 +244,78 @@ function JobsPanel(props: { selectedJob?: Job; onSelect: (job: Job) => void; onV
   );
 }
 
-function ResultsPanel(props: { onVisualize: (path: string) => void; onAnalyze: (path: string, action: AnalysisAction) => void; onToast: (message: string) => void }) {
-  const [results, setResults] = React.useState<ResultFile[]>([]);
+function DataPanel(props: { onVisualize: (path: string) => void; onAnalyze: (path: string, action: AnalysisAction) => void; onToast: (message: string) => void }) {
+  const [directory, setDirectory] = React.useState('data');
+  const [listing, setListing] = React.useState<DataBrowserListing | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+
   React.useEffect(() => {
-    api.results()
-      .then(setResults)
-      .catch((err) => props.onToast(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }, []);
-  const grouped = results.reduce<Record<string, ResultFile[]>>((acc, item) => {
-    acc[item.group] = [...(acc[item.group] ?? []), item];
-    return acc;
-  }, {});
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    api.browseData(directory)
+      .then((next) => {
+        if (!cancelled) setListing(next);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [directory]);
+
+  const filteredItems = listing?.items.filter(item => item.is_dir || isSapOr2SapOutput(item.path)) || [];
+
   return (
     <section className="panel">
       <div className="panel-header">
         <div>
-          <h2>Results</h2>
-          <p>Repo-local data files and metadata sidecars.</p>
+          <h2>Data</h2>
+          <p>Repo-local SAP and 2SAP files.</p>
         </div>
         <Database size={20} />
       </div>
+      
+      <div className="browser-path-header">
+        <button className="icon" onClick={() => setDirectory('data')} title="Go to data root"><Database size={16} /></button>
+        <strong>{listing?.path || directory}</strong>
+      </div>
+
       {loading && <Skeleton lines={5} />}
-      {!loading && results.length === 0 && <EmptyState title="No result files" detail="Run a job or generate data files and refresh this view." />}
-      {Object.entries(grouped).map(([group, items]) => (
-        <div key={group} className="result-group">
-          <h3>{group}</h3>
-          {items.slice(0, 80).map((item) => (
-            <div className="result-row" key={item.path}>
-              <div><strong>{item.path}</strong><small>{item.kind} · {item.size_bytes} bytes {item.meta_path ? '· meta' : ''}</small></div>
-              {item.kind === 'uofs' && (
+      {error && <div className="errors">{error}</div>}
+      
+      {!loading && !error && (
+        <div className="data-browser-list">
+          {listing?.parent_path && (
+            <button className="browser-row" onClick={() => setDirectory(listing.parent_path!)}>
+              <Folder size={17} /><span>..</span><small>Parent directory</small>
+            </button>
+          )}
+          {filteredItems.length === 0 && <EmptyState title="No SAP files found" detail="No SAP or 2SAP files were found in this directory." />}
+          {filteredItems.map((item) => (
+            <div key={item.path} className="data-row">
+              <div className="data-info" onClick={() => item.is_dir && setDirectory(item.path)} style={{ cursor: item.is_dir ? 'pointer' : 'default' }}>
+                {item.is_dir ? <Folder size={17} /> : <FileText size={17} />}
+                <div>
+                  <strong>{item.name}</strong>
+                  <small>{item.is_dir ? 'Directory' : `${item.kind}${item.size_bytes ? ` · ${item.size_bytes} bytes` : ''}`}</small>
+                </div>
+              </div>
+              {!item.is_dir && (
                 <div className="button-strip">
                   <button onClick={() => props.onVisualize(item.path)}>Visualize</button>
-                  <button onClick={() => props.onAnalyze(item.path, 'summary')}>Summary</button>
-                  <button onClick={() => props.onAnalyze(item.path, 'validate')}>Validate</button>
+                  <button onClick={() => props.onAnalyze(item.path, 'summary')}>Analysis</button>
                 </div>
               )}
             </div>
           ))}
         </div>
-      ))}
+      )}
     </section>
   );
 }
@@ -361,6 +382,84 @@ function UofsBrowser(props: { currentPath: string; onChoose: (path: string) => v
   );
 }
 
+function AnalysisChart({ result }: { result: AnalysisResult }) {
+  let chartData: any[] = [];
+  let xKey = 'value';
+  let yKey = 'count';
+  let label = 'Count';
+
+  if (result.action === 'count_edges' || result.action === 'count_spans' || result.action === 'contacts') {
+    chartData = result.rows;
+    label = result.action === 'count_edges' ? 'Edge count' : result.action === 'count_spans' ? 'Span' : 'Contacts';
+  } else if (result.action === 'linking_number') {
+    const counts: Record<string, number> = {};
+    result.rows.forEach((row: any) => {
+      const val = row.linking_number;
+      if (val !== undefined) {
+        counts[val] = (counts[val] || 0) + 1;
+      }
+    });
+    chartData = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => Number(a.value) - Number(b.value));
+    xKey = 'value';
+    label = 'Linking number';
+  } else if (result.action === 'shrink_labels') {
+    const counts: Record<string, number> = {};
+    result.rows.forEach((row: any) => {
+      (row.labels || []).forEach((labelStr: string) => {
+        counts[labelStr] = (counts[labelStr] || 0) + 1;
+      });
+    });
+    chartData = Object.entries(counts).map(([labelStr, count]) => ({ label: labelStr, count })).sort((a, b) => b.count - a.count);
+    xKey = 'label';
+    label = 'Label frequency';
+  } else {
+    return null;
+  }
+
+  if (chartData.length === 0) return null;
+
+  return (
+    <div className="analysis-chart-container">
+      <div className="chart-header">
+        <strong>Distribution: {label}</strong>
+      </div>
+      <div style={{ width: '100%', height: 320 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#d9ddcf" />
+            <XAxis 
+              dataKey={xKey} 
+              stroke="#5f665d" 
+              fontSize={12} 
+              tickLine={false} 
+              axisLine={{ stroke: '#d9ddcf' }}
+              label={{ value: xKey === 'value' ? label : 'Labels', position: 'insideBottom', offset: -10, fontSize: 11, fill: '#5f665d' }}
+            />
+            <YAxis 
+              stroke="#5f665d" 
+              fontSize={12} 
+              tickLine={false} 
+              axisLine={{ stroke: '#d9ddcf' }}
+              label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#5f665d' }}
+            />
+            <Tooltip 
+              cursor={{ fill: 'rgba(11, 106, 65, 0.05)' }}
+              contentStyle={{ backgroundColor: '#fff', border: '1px solid #d9ddcf', borderRadius: '4px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+              itemStyle={{ color: '#0B6A41', fontWeight: 600 }}
+              labelStyle={{ color: '#000', marginBottom: 4, fontWeight: 700 }}
+            />
+            <Bar dataKey={yKey} fill="#0B6A41" radius={[2, 2, 0, 0]} barSize={40}>
+              {chartData.map((_entry, index) => (
+                <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#0B6A41' : '#148c58'} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathChange: (path: string) => void; onToast: (message: string) => void }) {
   const [path, setPath] = React.useState(props.path);
   const [browserOpen, setBrowserOpen] = React.useState(false);
@@ -379,6 +478,7 @@ function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathCha
   async function run(action: AnalysisAction, targetPath = path) {
     setLoading(true);
     setError('');
+    setResult(null);
     try {
       const next = await api.analysis(targetPath, action);
       setResult(next);
@@ -424,10 +524,13 @@ function AnalysisPanel(props: { path: string; action?: AnalysisAction; onPathCha
         <div className="analysis-output">
           <h3>{analysisActions.find((item) => item.action === result.action)?.label ?? result.action}</h3>
           <div className="metadata-grid">
-            {Object.entries(result.metrics).map(([key, value]) => (
-              <div key={key} className={key.toLowerCase().includes('path') ? 'wide-metric' : undefined}><span>{key}</span><strong>{formatMetric(key, value)}</strong></div>
-            ))}
+            {Object.entries(result.metrics)
+              .filter(([key]) => key.toLowerCase() !== 'path')
+              .map(([key, value]) => (
+                <div key={key} className={key.toLowerCase().includes('path') ? 'wide-metric' : undefined}><span>{key}</span><strong>{formatMetric(key, value)}</strong></div>
+              ))}
           </div>
+          <AnalysisChart result={result} />
           {rows.length > 0 && (
             <div className="table-wrap">
               <table>
@@ -536,14 +639,14 @@ function App() {
         <h1>SAP Workbench</h1>
         <button className={view === 'launcher' ? 'active' : ''} onClick={() => setView('launcher')}><Play size={17} /> Run Launcher</button>
         <button className={view === 'jobs' ? 'active' : ''} onClick={() => setView('jobs')}><Activity size={17} /> Jobs</button>
-        <button className={view === 'results' ? 'active' : ''} onClick={() => setView('results')}><Database size={17} /> Results</button>
+        <button className={view === 'results' ? 'active' : ''} onClick={() => setView('results')}><Database size={17} /> Data</button>
         <button className={view === 'visualize' ? 'active' : ''} onClick={() => setView('visualize')}><BarChart3 size={17} /> Visualize</button>
-        <button className={view === 'analysis' ? 'active' : ''} onClick={() => setView('analysis')}><ClipboardCheck size={17} /> Analysis</button>
+        <button className={view === 'analysis' ? 'active' : ''} onClick={() => { setView('analysis'); setAnalysisTarget({ action: 'summary' }); }}><ClipboardCheck size={17} /> Analysis</button>
       </aside>
       <main>
         {view === 'launcher' && <Launcher onToast={showToast} onJob={(job) => { setSelectedJob(job); setView('jobs'); }} />}
         {view === 'jobs' && <JobsPanel selectedJob={selectedJob} onSelect={setSelectedJob} onToast={showToast} onVisualize={(path) => { setUofsPath(path); setView('visualize'); }} onAnalyze={(path, action) => { setUofsPath(path); setAnalysisTarget({ action }); setView('analysis'); }} />}
-        {view === 'results' && <ResultsPanel onToast={showToast} onVisualize={(path) => { setUofsPath(path); setView('visualize'); }} onAnalyze={(path, action) => { setUofsPath(path); setAnalysisTarget({ action }); setView('analysis'); }} />}
+        {view === 'results' && <DataPanel onToast={showToast} onVisualize={(path) => { setUofsPath(path); setView('visualize'); }} onAnalyze={(path, action) => { setUofsPath(path); setAnalysisTarget({ action }); setView('analysis'); }} />}
         {view === 'visualize' && <PreviewPanel path={uofsPath} onPathChange={setUofsPath} />}
         {view === 'analysis' && <AnalysisPanel path={uofsPath} action={analysisTarget.action} onPathChange={setUofsPath} onToast={showToast} />}
       </main>

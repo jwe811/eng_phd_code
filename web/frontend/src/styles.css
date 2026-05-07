@@ -465,6 +465,60 @@ pre {
   overflow-wrap: anywhere;
 }
 
+.browser-path-header {
+  align-items: center;
+  background: #fbfcf8;
+  border: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+}
+
+.browser-path-header strong {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+}
+
+.data-browser-list {
+  display: grid;
+  gap: 1px;
+}
+
+.data-row {
+  align-items: center;
+  background: white;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr auto;
+  padding: 8px 0;
+}
+
+.data-row:hover {
+  background: #fbfcf8;
+}
+
+.data-info {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.data-info div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.data-info strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .canvas-wrap {
   border: 1px solid var(--line);
   height: 460px;
@@ -481,6 +535,22 @@ pre {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.analysis-chart-container {
+  background: #fbfcf8;
+  border: 1px solid var(--line);
+  margin: 14px 0;
+  padding: 16px;
+}
+
+.chart-header {
+  margin-bottom: 12px;
+}
+
+.chart-header strong {
+  color: var(--brand-black);
+  font-size: 14px;
 }
 
 .analysis-output {
